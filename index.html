@@ -371,7 +371,7 @@
       try {
         const response = await fetch(`${GAS_URL}?date=${encodeURIComponent(date)}`);
         const data = await response.json();
-        const slots = (Array.isArray(data) ? data : (data.slots || [])).filter((slot) => slot.available);
+        const slots = (Array.isArray(data) ? data : (data.slots || [])).filter((slot) => slot && slot.time && slot.available !== false);
         if (!slots.length) {
           timeSlotsDiv.innerHTML = '<div class="status">この日に予約できる枠はありません</div>';
           return;

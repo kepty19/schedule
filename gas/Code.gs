@@ -99,6 +99,15 @@ function sendReminders() {
   });
 }
 
+/**
+ * 空き枠の唯一のルール:
+ *   「Online Lesson Booking Slot」= 講師の稼働時間 = 予約できる
+ *   「レッスン予約」= すでに取られた枠
+ *
+ * やってはいけないこと（以前ここで壊した）:
+ *   - 稼働枠を busy にする / ゲスト有無で埋め済みにする
+ *   - 稼働枠が無い日に 16:30〜19:30 を捏造する
+ */
 function buildSlots_(date) {
   if (date < tokyoDateString_(new Date())) return [];
 
@@ -108,40 +117,40 @@ function buildSlots_(date) {
   var busy = [];
 
   events.forEach(function (event) {
-    if (isOurBooking_(event)) {
-      busy.push({ start: event.getStartTime(), end: event.getEndTime() });
+    if (isScheduleNamed_(event)) {
+      if (!event.isAllDayEvent()) {
+        windows.push({ start: event.getStartTime(), end: event.getEndTime() });
+      }
       return;
     }
-    if (isScheduleNamed_(event) && !event.isAllDayEvent()) {
-      windows.push({ start: event.getStartTime(), end: event.getEndTime() });
+    if (isOurBooking_(event)) {
+      busy.push({ start: event.getStartTime(), end: event.getEndTime() });
     }
   });
 
-  windows = mergeWindows_(windows);
-  if (!windows.length) return [];
-  return slotsFromWindows_(windows, busy);
+  return slotsFromWindows_(mergeWindows_(windows), busy);
 }
 
 function slotsFromWindows_(windows, busy) {
   var now = new Date();
+  var latest = now.getTime() + LEAD_MINUTES * 60 * 1000;
   var slots = [];
   var seen = {};
+  var maxOpeningMs = (DURATION_MINUTES + 5) * 60 * 1000;
+  var durationMs = DURATION_MINUTES * 60 * 1000;
+  var stepMs = SLOT_MINUTES * 60 * 1000;
 
   windows.forEach(function (win) {
-    var cursor = ceilToSlot_(win.start);
-    var winEnd = win.end.getTime();
-    while (cursor.getTime() + DURATION_MINUTES * 60 * 1000 <= winEnd + 1000) {
-      var slotEnd = new Date(cursor.getTime() + DURATION_MINUTES * 60 * 1000);
-      var time = Utilities.formatDate(cursor, TZ, 'HH:mm');
-      if (!seen[time]) {
-        var tooSoon = cursor.getTime() < now.getTime() + LEAD_MINUTES * 60 * 1000;
-        var blocked = overlapsBusy_(cursor, slotEnd, busy);
-        if (!tooSoon && !blocked) {
-          slots.push({ time: time, available: true });
-        }
-        seen[time] = true;
-      }
-      cursor = new Date(cursor.getTime() + SLOT_MINUTES * 60 * 1000);
+    var start = win.start;
+    var endMs = win.end.getTime();
+    if (endMs - start.getTime() <= maxOpeningMs) {
+      addAvailableSlot_(start, latest, busy, seen, slots);
+      return;
+    }
+    var cursor = new Date(Math.floor(start.getTime() / 60000) * 60000);
+    while (cursor.getTime() + durationMs <= endMs + 2000) {
+      addAvailableSlot_(cursor, latest, busy, seen, slots);
+      cursor = new Date(cursor.getTime() + stepMs);
     }
   });
 
@@ -149,6 +158,16 @@ function slotsFromWindows_(windows, busy) {
     return a.time < b.time ? -1 : 1;
   });
   return slots;
+}
+
+function addAvailableSlot_(start, latest, busy, seen, slots) {
+  var time = Utilities.formatDate(start, TZ, 'HH:mm');
+  if (seen[time]) return;
+  seen[time] = true;
+  if (start.getTime() < latest) return;
+  var slotEnd = new Date(start.getTime() + DURATION_MINUTES * 60 * 1000);
+  if (overlapsBusy_(start, slotEnd, busy)) return;
+  slots.push({ time: time, available: true });
 }
 
 function mergeWindows_(windows) {
@@ -168,10 +187,9 @@ function mergeWindows_(windows) {
   return merged;
 }
 
-function overlapsBusy_(start, end, busy) {
-  return busy.some(function (block) {
-    return block.start.getTime() < end.getTime() && block.end.getTime() > start.getTime();
-  });
+function isScheduleNamed_(event) {
+  var title = String(event.getTitle() || '').toLowerCase();
+  return title.indexOf('online lesson booking') !== -1 || title.indexOf('booking slot') !== -1;
 }
 
 function isOurBooking_(event) {
@@ -180,28 +198,10 @@ function isOurBooking_(event) {
   return title.indexOf('レッスン予約') !== -1 || desc.indexOf('LINE_USER_ID:') !== -1;
 }
 
-function isScheduleNamed_(event) {
-  var title = String(event.getTitle() || '').toLowerCase();
-  return title.indexOf(SCHEDULE_NAME.toLowerCase()) !== -1;
-}
-
-function ceilToSlot_(date) {
-  var hour = Number(Utilities.formatDate(date, TZ, 'H'));
-  var minute = Number(Utilities.formatDate(date, TZ, 'm'));
-  var ymd = Utilities.formatDate(date, TZ, 'yyyy-MM-dd');
-  var extra = minute % SLOT_MINUTES;
-  if (extra !== 0) {
-    minute += SLOT_MINUTES - extra;
-    if (minute >= 60) {
-      hour += 1;
-      minute -= 60;
-    }
-  }
-  return slotStart_(ymd, pad2_(hour) + ':' + pad2_(minute));
-}
-
-function pad2_(n) {
-  return (n < 10 ? '0' : '') + n;
+function overlapsBusy_(start, end, busy) {
+  return busy.some(function (block) {
+    return block.start.getTime() < end.getTime() && block.end.getTime() > start.getTime();
+  });
 }
 
 function findSlot_(date, time) {
