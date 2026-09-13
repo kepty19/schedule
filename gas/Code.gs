@@ -12,14 +12,18 @@
  * 4. 発行される URL は必ず
  *    https://script.google.com/macros/s/..../exec
  *    （/a/macros/kepty.co/ だと LINE 内からログインを要求され、空き枠取得に失敗します）
- * 空き枠は Googleカレンダーの「Online Lesson Booking Slot」予約スケジュールだけを見ます。
- * 平日16:30固定ではなく、その日に出ている予約可能ブロックの中だけを20分刻みで返します。
+ * 空き枠は「Online Lesson Booking Slot」の予約可能ブロックを20分刻みで返します。
+ * ブロックが無い／全部潰れる日は、平日 16:30〜19:30 を予備の枠として出します。
+ * 埋め済みは「レッスン予約」だけを見ます（Googleの空き枠イベントは塞ぎません）。
  */
 
 var TZ = 'Asia/Tokyo';
 var SLOT_MINUTES = 20;
 var DURATION_MINUTES = 20;
 var LEAD_MINUTES = 60;
+var FIRST_SLOT = '16:30';
+var LAST_SLOT = '19:30';
+var WEEKDAYS = [1, 2, 3, 4, 5];
 var SCHEDULE_NAME = 'Online Lesson Booking Slot';
 
 function doGet(e) {
@@ -102,54 +106,64 @@ function buildSlots_(date) {
   if (date <= tokyoDateString_(new Date())) return [];
 
   var startDay = parseTokyoDate_(date);
-  var endDay = endOfDay_(startDay);
-  var events = getCalendar_().getEvents(startDay, endDay);
+  var weekday = Number(Utilities.formatDate(startDay, TZ, 'u'));
+  var events = getCalendar_().getEvents(startDay, endOfDay_(startDay));
   var windows = [];
   var busy = [];
-  var openings = [];
+  var hasScheduleDay = false;
 
   events.forEach(function (event) {
-    if (event.isAllDayEvent()) {
-      if (isConfirmedBusy_(event)) {
-        busy.push({ start: startDay, end: endDay });
+    if (isOurBooking_(event)) {
+      busy.push({ start: event.getStartTime(), end: event.getEndTime() });
+      return;
+    }
+    if (isScheduleNamed_(event)) {
+      hasScheduleDay = true;
+      if (!event.isAllDayEvent()) {
+        windows.push({ start: event.getStartTime(), end: event.getEndTime() });
       }
-      return;
     }
-    var durationMin = (event.getEndTime().getTime() - event.getStartTime().getTime()) / 60000;
-    if (isScheduleNamed_(event) && durationMin > DURATION_MINUTES + 5) {
-      windows.push({ start: event.getStartTime(), end: event.getEndTime() });
-      return;
-    }
-    if (isScheduleNamed_(event) && Math.abs(durationMin - DURATION_MINUTES) <= 5) {
-      if (isConfirmedBusy_(event)) {
-        busy.push({ start: event.getStartTime(), end: event.getEndTime() });
-      } else {
-        openings.push(event);
-      }
-      return;
-    }
-    busy.push({ start: event.getStartTime(), end: event.getEndTime() });
   });
 
-  if (openings.length) {
-    return openingsToSlots_(openings, busy);
+  windows = mergeWindows_(windows);
+  if (!windows.length && (hasScheduleDay || WEEKDAYS.indexOf(weekday) !== -1)) {
+    windows = [defaultWindow_(date)];
   }
   if (!windows.length) return [];
 
+  var slots = slotsFromWindows_(windows, busy);
+  if (!slots.length && WEEKDAYS.indexOf(weekday) !== -1) {
+    slots = slotsFromWindows_([defaultWindow_(date)], busy);
+  }
+  return slots;
+}
+
+function defaultWindow_(date) {
+  var start = slotStart_(date, FIRST_SLOT);
+  var lastStart = slotStart_(date, LAST_SLOT);
+  return {
+    start: start,
+    end: new Date(lastStart.getTime() + DURATION_MINUTES * 60 * 1000)
+  };
+}
+
+function slotsFromWindows_(windows, busy) {
   var now = new Date();
   var slots = [];
   var seen = {};
 
   windows.forEach(function (win) {
     var cursor = ceilToSlot_(win.start);
-    var lastEnd = win.end.getTime();
-    while (cursor.getTime() + DURATION_MINUTES * 60 * 1000 <= lastEnd + 1000) {
+    var winEnd = win.end.getTime();
+    while (cursor.getTime() + DURATION_MINUTES * 60 * 1000 <= winEnd + 1000) {
       var slotEnd = new Date(cursor.getTime() + DURATION_MINUTES * 60 * 1000);
       var time = Utilities.formatDate(cursor, TZ, 'HH:mm');
       if (!seen[time]) {
         var tooSoon = cursor.getTime() < now.getTime() + LEAD_MINUTES * 60 * 1000;
         var blocked = overlapsBusy_(cursor, slotEnd, busy);
-        slots.push({ time: time, available: !tooSoon && !blocked });
+        if (!tooSoon && !blocked) {
+          slots.push({ time: time, available: true });
+        }
         seen[time] = true;
       }
       cursor = new Date(cursor.getTime() + SLOT_MINUTES * 60 * 1000);
@@ -159,24 +173,24 @@ function buildSlots_(date) {
   slots.sort(function (a, b) {
     return a.time < b.time ? -1 : 1;
   });
-  return slots.filter(function (slot) { return slot.available; });
+  return slots;
 }
 
-function openingsToSlots_(openings, busy) {
-  var now = new Date();
-  return openings.map(function (event) {
-    var start = event.getStartTime();
-    var end = event.getEndTime();
-    var tooSoon = start.getTime() < now.getTime() + LEAD_MINUTES * 60 * 1000;
-    return {
-      time: Utilities.formatDate(start, TZ, 'HH:mm'),
-      available: !tooSoon && !overlapsBusy_(start, end, busy)
-    };
-  }).filter(function (slot) {
-    return slot.available;
-  }).sort(function (a, b) {
-    return a.time < b.time ? -1 : 1;
+function mergeWindows_(windows) {
+  if (!windows.length) return [];
+  windows.sort(function (a, b) {
+    return a.start.getTime() - b.start.getTime();
   });
+  var merged = [windows[0]];
+  for (var i = 1; i < windows.length; i++) {
+    var last = merged[merged.length - 1];
+    if (windows[i].start.getTime() <= last.end.getTime() + 1000) {
+      if (windows[i].end.getTime() > last.end.getTime()) last.end = windows[i].end;
+    } else {
+      merged.push(windows[i]);
+    }
+  }
+  return merged;
 }
 
 function overlapsBusy_(start, end, busy) {
@@ -185,17 +199,10 @@ function overlapsBusy_(start, end, busy) {
   });
 }
 
-function isConfirmedBusy_(event) {
+function isOurBooking_(event) {
   var title = String(event.getTitle() || '');
-  if (title.indexOf('レッスン予約') !== -1) return true;
   var desc = event.getDescription() || '';
-  if (desc.indexOf('LINE_USER_ID:') !== -1) return true;
-  try {
-    var guests = event.getGuestList();
-    if (guests && guests.length) return true;
-  } catch (err) {}
-  if (!isScheduleNamed_(event)) return true;
-  return false;
+  return title.indexOf('レッスン予約') !== -1 || desc.indexOf('LINE_USER_ID:') !== -1;
 }
 
 function isScheduleNamed_(event) {

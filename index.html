@@ -51,22 +51,7 @@
     }
 
     .brand {
-      display: flex;
-      align-items: center;
-      gap: 10px;
       margin-bottom: 14px;
-    }
-
-    .brand-mark {
-      width: 28px;
-      height: 28px;
-      border-radius: 9px;
-      background: rgba(255,255,255,0.16);
-      border: 1px solid rgba(255,255,255,0.28);
-      display: grid;
-      place-items: center;
-      font-size: 13px;
-      font-weight: 800;
     }
 
     .brand-name {
@@ -300,7 +285,6 @@
   <div class="app">
     <header class="hero">
       <div class="brand">
-        <div class="brand-mark">K</div>
         <div class="brand-name">Kepty English</div>
       </div>
       <h1>レッスン予約</h1>
@@ -351,13 +335,17 @@
     let selectedTime = "";
     let inLine = false;
 
-    function tokyoToday() {
-      return new Intl.DateTimeFormat("en-CA", {
+    function tokyoPlusDays(days) {
+      const parts = new Intl.DateTimeFormat("en-CA", {
         timeZone: "Asia/Tokyo",
         year: "numeric",
         month: "2-digit",
         day: "2-digit"
-      }).format(new Date());
+      }).formatToParts(new Date());
+      const year = Number(parts.find((part) => part.type === "year").value);
+      const month = Number(parts.find((part) => part.type === "month").value);
+      const day = Number(parts.find((part) => part.type === "day").value);
+      return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
     }
 
     function setUser(name, userId) {
@@ -457,9 +445,9 @@
 
     document.addEventListener("DOMContentLoaded", async () => {
       const dateSelect = document.getElementById("dateSelect");
-      const today = tokyoToday();
-      dateSelect.value = today;
-      dateSelect.min = today;
+      const firstOpen = tokyoPlusDays(1);
+      dateSelect.min = firstOpen;
+      dateSelect.value = firstOpen;
       dateSelect.addEventListener("change", loadTimeSlots);
       document.getElementById("submitBtn").addEventListener("click", submitReservation);
       document.getElementById("closeModal").addEventListener("click", () => {
