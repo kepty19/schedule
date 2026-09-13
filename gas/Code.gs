@@ -12,16 +12,15 @@
  * 4. 発行される URL は必ず
  *    https://script.google.com/macros/s/..../exec
  *    （/a/macros/kepty.co/ だと LINE 内からログインを要求され、空き枠取得に失敗します）
- * 5. トリガー: sendReminders を 10 分おきに実行 → レッスン 1 時間前の LINE リマインド
+ * 空き枠は Googleカレンダーの「Online Lesson Booking Slot」予約スケジュールだけを見ます。
+ * 平日16:30固定ではなく、その日に出ている予約可能ブロックの中だけを20分刻みで返します。
  */
 
 var TZ = 'Asia/Tokyo';
 var SLOT_MINUTES = 20;
 var DURATION_MINUTES = 20;
-var FIRST_SLOT = '16:30';
-var LAST_SLOT = '19:30';
 var LEAD_MINUTES = 60;
-var WEEKDAYS = [1, 2, 3, 4, 5];
+var SCHEDULE_NAME = 'Online Lesson Booking Slot';
 
 function doGet(e) {
   try {
@@ -101,28 +100,99 @@ function sendReminders() {
 
 function buildSlots_(date) {
   var startDay = parseTokyoDate_(date);
-  var weekday = Number(Utilities.formatDate(startDay, TZ, 'u'));
-  if (WEEKDAYS.indexOf(weekday) === -1) return [];
+  var endDay = endOfDay_(startDay);
+  var events = getCalendar_().getEvents(startDay, endDay);
+  var windows = [];
+  var busy = [];
+  var namedSlots = [];
 
-  var events = getCalendar_().getEvents(startDay, endOfDay_(startDay));
+  events.forEach(function (event) {
+    if (event.isAllDayEvent()) {
+      if (!isScheduleNamed_(event)) {
+        busy.push({ start: startDay, end: endDay });
+      }
+      return;
+    }
+    var durationMin = (event.getEndTime().getTime() - event.getStartTime().getTime()) / 60000;
+    if (isScheduleNamed_(event) && durationMin > DURATION_MINUTES + 5) {
+      windows.push({ start: event.getStartTime(), end: event.getEndTime() });
+      return;
+    }
+    if (isScheduleNamed_(event) && Math.abs(durationMin - DURATION_MINUTES) <= 5) {
+      namedSlots.push(event);
+    }
+    busy.push({ start: event.getStartTime(), end: event.getEndTime() });
+  });
+
+  if (!windows.length && namedSlots.length) {
+    return namedSlotsToSlots_(namedSlots);
+  }
+  if (!windows.length) return [];
+
   var now = new Date();
   var slots = [];
-  var cursor = slotStart_(date, FIRST_SLOT);
-  var last = slotStart_(date, LAST_SLOT);
+  var seen = {};
 
-  while (cursor.getTime() <= last.getTime()) {
-    var slotEnd = new Date(cursor.getTime() + DURATION_MINUTES * 60 * 1000);
-    var tooSoon = cursor.getTime() < now.getTime() + LEAD_MINUTES * 60 * 1000;
-    var busy = events.some(function (event) {
-      return event.getStartTime() < slotEnd && event.getEndTime() > cursor;
-    });
-    slots.push({
-      time: Utilities.formatDate(cursor, TZ, 'HH:mm'),
-      available: !tooSoon && !busy
-    });
-    cursor = new Date(cursor.getTime() + SLOT_MINUTES * 60 * 1000);
-  }
+  windows.forEach(function (win) {
+    var cursor = ceilToSlot_(win.start);
+    var lastEnd = win.end.getTime();
+    while (cursor.getTime() + DURATION_MINUTES * 60 * 1000 <= lastEnd + 1000) {
+      var slotEnd = new Date(cursor.getTime() + DURATION_MINUTES * 60 * 1000);
+      var time = Utilities.formatDate(cursor, TZ, 'HH:mm');
+      if (!seen[time]) {
+        var tooSoon = cursor.getTime() < now.getTime() + LEAD_MINUTES * 60 * 1000;
+        var blocked = busy.some(function (block) {
+          return block.start.getTime() < slotEnd.getTime() && block.end.getTime() > cursor.getTime();
+        });
+        slots.push({ time: time, available: !tooSoon && !blocked });
+        seen[time] = true;
+      }
+      cursor = new Date(cursor.getTime() + SLOT_MINUTES * 60 * 1000);
+    }
+  });
+
+  slots.sort(function (a, b) {
+    return a.time < b.time ? -1 : 1;
+  });
   return slots;
+}
+
+function namedSlotsToSlots_(namedSlots) {
+  var now = new Date();
+  return namedSlots.map(function (event) {
+    var tooSoon = event.getStartTime().getTime() < now.getTime() + LEAD_MINUTES * 60 * 1000;
+    var guests = event.getGuestList ? event.getGuestList() : [];
+    return {
+      time: Utilities.formatDate(event.getStartTime(), TZ, 'HH:mm'),
+      available: !tooSoon && (!guests || guests.length === 0)
+    };
+  }).sort(function (a, b) {
+    return a.time < b.time ? -1 : 1;
+  });
+}
+
+function isScheduleNamed_(event) {
+  var title = String(event.getTitle() || '').toLowerCase();
+  return title.indexOf(SCHEDULE_NAME.toLowerCase()) !== -1;
+}
+
+function ceilToSlot_(date) {
+  var hour = Number(Utilities.formatDate(date, TZ, 'H'));
+  var minute = Number(Utilities.formatDate(date, TZ, 'm'));
+  var ymd = Utilities.formatDate(date, TZ, 'yyyy-MM-dd');
+  var extra = minute % SLOT_MINUTES;
+  if (extra !== 0) {
+    minute += SLOT_MINUTES - extra;
+    if (minute >= 60) {
+      hour += 1;
+      minute -= 60;
+    }
+  }
+  return slotStart_(ymd, pad2_(hour) + ':' + pad2_(minute));
+}
+
+function pad2_(n) {
+  return (n < 10 ? '0' : '') + n;
 }
 
 function findSlot_(date, time) {
