@@ -1,36 +1,89 @@
 <!DOCTYPE html>
-<html>
-<!-- head部分やbody部分のHTMLデザインは先ほどと全く同じです -->
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>オンライン予約システム</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 </head>
-<body class="bg-gray-100 text-gray-800 font-sans">
-  <!-- 先ほどの <div class="max-w-md mx-auto ...> から </main> </div> までをそのまま入れてください -->
-  <div class="max-w-md mx-auto bg-white min-h-screen shadow-md">
-    <!-- デザイン部分は省略せずに先ほどのものをコピペしてください -->
-    <header class="bg-blue-600 text-white p-4 text-center shadow"><h1 class="text-xl font-bold tracking-wider">ご予約フォーム</h1></header>
-    <main class="p-5">
-      <div class="mb-8">
-        <h2 class="text-sm font-bold text-gray-500 mb-2">日付</h2>
-        <input type="date" id="dateSelect" class="w-full p-3 border border-gray-300 rounded-lg text-lg">
-      </div>
-      <div class="mb-8">
-        <h2 class="text-sm font-bold text-gray-500 mb-2">時間</h2>
-        <div id="timeSlots" class="grid grid-cols-2 gap-3"></div>
-      </div>
-      <button id="submitBtn" class="w-full bg-blue-600 text-white py-4 px-4 rounded-xl opacity-50 cursor-not-allowed" disabled>日時を選択してください</button>
-    </main>
+<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen">
+  
+  <div class="max-w-md mx-auto bg-white min-h-screen flex flex-col justify-between shadow-2xl">
+    <div>
+      <header class="bg-indigo-600 text-white p-5 text-center shadow-lg">
+        <h1 class="text-lg font-bold tracking-wide">日時選択・予約</h1>
+        <p class="text-indigo-200 text-xs mt-1">ご希望の空き時間枠を選択してください</p>
+      </header>
+
+      <main class="p-6 space-y-6">
+        <div id="userInfo" class="flex items-center p-3.5 bg-indigo-50/60 border border-indigo-100 rounded-xl">
+          <div class="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold mr-3 shadow-sm">
+            👤
+          </div>
+          <div>
+            <p class="text-xs text-slate-500 font-medium">予約アカウント</p>
+            <p id="userNameDisplay" class="text-sm font-bold text-slate-800">読み込み中...</p>
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">1. 日付を選択</label>
+          <input type="date" id="dateSelect" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-700">
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">2. 時間を選択（各枠60分）</label>
+          <div id="timeSlots" class="grid grid-cols-2 gap-2.5"></div>
+        </div>
+      </main>
+    </div>
+
+    <div class="p-5 border-t border-slate-100 bg-white sticky bottom-0">
+      <button id="submitBtn" class="w-full bg-indigo-600 text-white font-bold py-4 px-4 rounded-xl opacity-50 cursor-not-allowed transition duration-200 shadow-md" disabled>
+        日時を選択してください
+      </button>
+    </div>
+  </div>
+
+  <div id="modal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 hidden backdrop-blur-sm">
+    <div class="bg-white rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
+      <div class="w-14 h-14 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold">✓</div>
+      <h3 class="text-lg font-bold text-slate-800 mb-2">予約が完了しました！</h3>
+      <p id="modalMessage" class="text-sm text-slate-600 mb-6"></p>
+      <button onclick="liff.closeWindow()" class="w-full bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-700">
+        画面を閉じる
+      </button>
+    </div>
   </div>
 
   <script>
-    // ★先ほどコピーしたGASのウェブアプリURLをここに貼り付けます
-    const GAS_URL = "https://script.google.com/macros/s/あなたのGASのURL/exec";
-    
+    // ==========================================
+    // 基本設定
+    // ==========================================
+    const LIFF_ID = "2009159043-q2GIlpyC"; // LINEログインで作成したLIFF ID
+    const GAS_URL = "https://script.google.com/a/macros/kepty.co/s/AKfycbx516RKAUhQsR8qMiMocJb0fEfAyZFfFXXAGJ5TPdjpgfISYLRNQKJVkVPcIWSL4nsb8g/exec"; // GASのWebアプリURL
+
+    let currentUserId = "LINE_USER_DUMMY";
+    let currentUserName = "ゲスト";
     let selectedTime = "";
 
-    document.addEventListener("DOMContentLoaded", () => {
+    document.addEventListener("DOMContentLoaded", async () => {
+      // LIFF初期化
+      try {
+        await liff.init({ liffId: LIFF_ID });
+        if (liff.isLoggedIn()) {
+          const profile = await liff.getProfile();
+          currentUserId = profile.userId;
+          currentUserName = profile.displayName;
+          document.getElementById('userNameDisplay').innerText = currentUserName;
+        } else {
+          liff.login();
+        }
+      } catch (err) {
+        document.getElementById('userNameDisplay').innerText = "テストユーザー";
+      }
+
       const dateSelect = document.getElementById('dateSelect');
       const today = new Date().toISOString().split('T')[0];
       dateSelect.value = today;
@@ -39,31 +92,31 @@
       loadTimeSlots();
     });
 
-    // 変更点1：GASから空き枠を取得する（GETリクエスト）
     async function loadTimeSlots() {
       const timeSlotsDiv = document.getElementById('timeSlots');
-      timeSlotsDiv.innerHTML = '<p class="text-gray-400 text-sm col-span-2 text-center py-4">読み込み中...</p>';
+      timeSlotsDiv.innerHTML = '<div class="col-span-2 text-center py-8 text-slate-400 text-sm">カレンダーから空き枠を確認中...</div>';
       
       try {
         const response = await fetch(`${GAS_URL}?date=${document.getElementById('dateSelect').value}`);
         const slots = await response.json();
         displayTimeSlots(slots);
       } catch (error) {
-        timeSlotsDiv.innerHTML = '<p class="text-red-500">エラーが発生しました</p>';
+        timeSlotsDiv.innerHTML = '<div class="col-span-2 text-center py-4 text-red-500 text-sm">空き枠の取得に失敗しました</div>';
       }
     }
 
     function displayTimeSlots(slots) {
       const timeSlotsDiv = document.getElementById('timeSlots');
       timeSlotsDiv.innerHTML = '';
+      
       slots.forEach(slot => {
         const btn = document.createElement('button');
         btn.innerText = slot.time;
         if (slot.available) {
-          btn.className = "py-3 px-4 border border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50";
+          btn.className = "py-3 px-4 border border-indigo-200 bg-indigo-50/30 text-indigo-600 font-bold rounded-xl hover:bg-indigo-600 hover:text-white transition duration-150 shadow-sm";
           btn.onclick = () => selectTime(btn, slot.time);
         } else {
-          btn.className = "py-3 px-4 bg-gray-100 text-gray-400 rounded-lg line-through";
+          btn.className = "py-3 px-4 bg-slate-100 text-slate-300 font-medium rounded-xl cursor-not-allowed line-through";
           btn.disabled = true;
         }
         timeSlotsDiv.appendChild(btn);
@@ -72,41 +125,51 @@
 
     function selectTime(clickedBtn, time) {
       document.querySelectorAll('#timeSlots button').forEach(b => {
-        if(!b.disabled) b.className = "py-3 px-4 border border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50";
+        if(!b.disabled) {
+          b.className = "py-3 px-4 border border-indigo-200 bg-indigo-50/30 text-indigo-600 font-bold rounded-xl hover:bg-indigo-600 hover:text-white transition duration-150 shadow-sm";
+        }
       });
-      clickedBtn.className = "py-3 px-4 bg-blue-600 text-white rounded-lg";
+      
+      clickedBtn.className = "py-3 px-4 bg-indigo-600 text-white font-bold rounded-xl shadow-md ring-2 ring-indigo-600 ring-offset-2";
       selectedTime = time;
       
       const submitBtn = document.getElementById('submitBtn');
       submitBtn.disabled = false;
-      submitBtn.innerText = "予約を確定する";
+      submitBtn.innerText = "この日時で予約を確定する";
       submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
       submitBtn.onclick = submitReservation;
     }
 
-    // 変更点2：予約データをGASへ送信する（POSTリクエスト）
     async function submitReservation() {
+      const date = document.getElementById('dateSelect').value;
       const submitBtn = document.getElementById('submitBtn');
-      submitBtn.innerText = "処理中...";
+      submitBtn.innerText = "予約処理中...";
       submitBtn.disabled = true;
 
       try {
         const response = await fetch(GAS_URL, {
           method: 'POST',
-          // ※GAS特有のセキュリティエラー（CORS）を避けるため、text/plainで送るのが鉄則です
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({
-            userId: "LINE_USER_ID_DUMMY",
-            date: document.getElementById('dateSelect').value,
+            userId: currentUserId,
+            userName: currentUserName,
+            date: date,
             time: selectedTime
           })
         });
         const result = await response.json();
-        alert(result.message);
-        submitBtn.innerText = "予約完了";
+        
+        if (result.success) {
+          document.getElementById('modalMessage').innerText = result.message;
+          document.getElementById('modal').classList.remove('hidden');
+        } else {
+          alert(result.message);
+          loadTimeSlots();
+        }
       } catch (error) {
-        alert("エラーが発生しました");
-        submitBtn.innerText = "予約を確定する";
+        alert("通信エラーが発生しました");
+      } finally {
+        submitBtn.innerText = "この日時で予約を確定する";
         submitBtn.disabled = false;
       }
     }
