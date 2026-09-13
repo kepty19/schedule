@@ -445,9 +445,9 @@
 
     document.addEventListener("DOMContentLoaded", async () => {
       const dateSelect = document.getElementById("dateSelect");
-      const firstOpen = tokyoPlusDays(1);
-      dateSelect.min = firstOpen;
-      dateSelect.value = firstOpen;
+      const today = tokyoPlusDays(0);
+      dateSelect.min = today;
+      dateSelect.value = today;
       dateSelect.addEventListener("change", loadTimeSlots);
       document.getElementById("submitBtn").addEventListener("click", submitReservation);
       document.getElementById("closeModal").addEventListener("click", () => {

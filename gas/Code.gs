@@ -12,18 +12,15 @@
  * 4. 発行される URL は必ず
  *    https://script.google.com/macros/s/..../exec
  *    （/a/macros/kepty.co/ だと LINE 内からログインを要求され、空き枠取得に失敗します）
- * 空き枠は「Online Lesson Booking Slot」の予約可能ブロックを20分刻みで返します。
- * ブロックが無い／全部潰れる日は、平日 16:30〜19:30 を予備の枠として出します。
- * 埋め済みは「レッスン予約」だけを見ます（Googleの空き枠イベントは塞ぎません）。
+ * 空き枠は「Online Lesson Booking Slot」が出ている時間だけ。
+ * それが講師の稼働時間であり、予約可能な枠です。無い日は枠を出しません。
+ * 予約確定時は同じカレンダーに「レッスン予約（名前）」を作成します。
  */
 
 var TZ = 'Asia/Tokyo';
 var SLOT_MINUTES = 20;
 var DURATION_MINUTES = 20;
 var LEAD_MINUTES = 60;
-var FIRST_SLOT = '16:30';
-var LAST_SLOT = '19:30';
-var WEEKDAYS = [1, 2, 3, 4, 5];
 var SCHEDULE_NAME = 'Online Lesson Booking Slot';
 
 function doGet(e) {
@@ -103,48 +100,26 @@ function sendReminders() {
 }
 
 function buildSlots_(date) {
-  if (date <= tokyoDateString_(new Date())) return [];
+  if (date < tokyoDateString_(new Date())) return [];
 
   var startDay = parseTokyoDate_(date);
-  var weekday = Number(Utilities.formatDate(startDay, TZ, 'u'));
   var events = getCalendar_().getEvents(startDay, endOfDay_(startDay));
   var windows = [];
   var busy = [];
-  var hasScheduleDay = false;
 
   events.forEach(function (event) {
     if (isOurBooking_(event)) {
       busy.push({ start: event.getStartTime(), end: event.getEndTime() });
       return;
     }
-    if (isScheduleNamed_(event)) {
-      hasScheduleDay = true;
-      if (!event.isAllDayEvent()) {
-        windows.push({ start: event.getStartTime(), end: event.getEndTime() });
-      }
+    if (isScheduleNamed_(event) && !event.isAllDayEvent()) {
+      windows.push({ start: event.getStartTime(), end: event.getEndTime() });
     }
   });
 
   windows = mergeWindows_(windows);
-  if (!windows.length && (hasScheduleDay || WEEKDAYS.indexOf(weekday) !== -1)) {
-    windows = [defaultWindow_(date)];
-  }
   if (!windows.length) return [];
-
-  var slots = slotsFromWindows_(windows, busy);
-  if (!slots.length && WEEKDAYS.indexOf(weekday) !== -1) {
-    slots = slotsFromWindows_([defaultWindow_(date)], busy);
-  }
-  return slots;
-}
-
-function defaultWindow_(date) {
-  var start = slotStart_(date, FIRST_SLOT);
-  var lastStart = slotStart_(date, LAST_SLOT);
-  return {
-    start: start,
-    end: new Date(lastStart.getTime() + DURATION_MINUTES * 60 * 1000)
-  };
+  return slotsFromWindows_(windows, busy);
 }
 
 function slotsFromWindows_(windows, busy) {
