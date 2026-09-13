@@ -103,6 +103,10 @@ function sendReminders() {
   });
 }
 
+function checkAndSendReminders() {
+  sendReminders();
+}
+
 function buildSlots_(date) {
   if (date < tokyoDateString_(new Date())) return [];
 
