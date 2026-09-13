@@ -3,176 +3,386 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>オンライン予約システム</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <title>レッスン予約 | Kepty English</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <style>
+    :root {
+      --kepty-orange: #CE4A22;
+      --kepty-orange-deep: #A83818;
+      --kepty-light-orange: #FFEDE8;
+      --kepty-mid-orange: #FAC3B1;
+      --ink: #1A1412;
+      --muted: #6B5E58;
+      --line: #F0E6E1;
+      --paper: #FFFDFB;
+      --canvas: #F7F1EE;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--canvas);
+      color: var(--ink);
+      font-family: Inter, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      display: flex;
+      justify-content: center;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 880px;
+      min-height: 100vh;
+      background: var(--paper);
+      box-shadow: 0 18px 50px rgba(42, 11, 2, 0.08);
+    }
+
+    .hero {
+      background: linear-gradient(160deg, #CE4A22 0%, #B33D1B 55%, #8F2E12 100%);
+      color: #fff;
+      padding: 28px 24px 26px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      border-radius: 9px;
+      background: rgba(255,255,255,0.16);
+      border: 1px solid rgba(255,255,255,0.28);
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+    }
+
+    .brand-name {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      opacity: 0.9;
+    }
+
+    .hero h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      line-height: 1.2;
+      letter-spacing: -0.03em;
+      font-weight: 800;
+    }
+
+    .hero p {
+      margin: 0;
+      font-size: 14px;
+      line-height: 1.7;
+      color: rgba(255,255,255,0.88);
+      max-width: 36em;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 11px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.14);
+      border: 1px solid rgba(255,255,255,0.2);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .content {
+      padding: 22px 20px 36px;
+    }
+
+    .account,
+    .guide,
+    .calendar-card {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+    }
+
+    .account {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      background: var(--kepty-light-orange);
+      border-color: var(--kepty-mid-orange);
+    }
+
+    .avatar {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: var(--kepty-orange);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    .account-label {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      color: var(--kepty-orange-deep);
+    }
+
+    .account-name {
+      margin: 2px 0 0;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .guide {
+      margin-top: 16px;
+      padding: 16px 18px 6px;
+    }
+
+    .guide h2 {
+      margin: 0 0 12px;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: var(--kepty-orange);
+    }
+
+    .steps {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+
+    @media (min-width: 720px) {
+      .steps {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+      }
+    }
+
+    .steps li {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 12px;
+      padding: 0 0 12px;
+      font-size: 14px;
+      line-height: 1.55;
+      color: var(--ink);
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--kepty-orange);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .steps strong {
+      display: block;
+      font-size: 15px;
+      margin-bottom: 2px;
+    }
+
+    .steps span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .calendar-card {
+      margin-top: 16px;
+      overflow: hidden;
+    }
+
+    .calendar-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .calendar-head h2 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .calendar-head p {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .open-link {
+      flex-shrink: 0;
+      color: var(--kepty-orange);
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      border-bottom: 1.5px solid var(--kepty-mid-orange);
+      padding-bottom: 1px;
+    }
+
+    .calendar-frame {
+      width: 100%;
+      min-height: 760px;
+      border: 0;
+      background: #fff;
+    }
+
+    .note {
+      margin: 14px 4px 0;
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--muted);
+    }
+
+    @media (max-width: 720px) {
+      .hero { padding: 22px 18px 20px; }
+      .hero h1 { font-size: 24px; }
+      .content { padding: 16px 14px 28px; }
+      .calendar-head { flex-direction: column; }
+      .calendar-frame { min-height: 1040px; }
+      .hero p { font-size: 13px; }
+    }
+  </style>
 </head>
-<body class="bg-slate-50 text-slate-800 font-sans antialiased min-h-screen">
-  
-  <div class="max-w-md mx-auto bg-white min-h-screen flex flex-col justify-between shadow-2xl">
-    <div>
-      <header class="bg-indigo-600 text-white p-5 text-center shadow-lg">
-        <h1 class="text-lg font-bold tracking-wide">日時選択・予約</h1>
-        <p class="text-indigo-200 text-xs mt-1">ご希望の空き時間枠を選択してください</p>
-      </header>
+<body>
+  <div class="app">
+    <header class="hero">
+      <div class="brand">
+        <div class="brand-mark">K</div>
+        <div class="brand-name">Kepty English</div>
+      </div>
+      <h1>レッスン予約</h1>
+      <p>Googleカレンダーの予約可能時間から、開始時刻を20分間隔で選べます。確定後、カレンダーに予定が追加されます。</p>
+      <div class="meta-row">
+        <div class="chip">20分間隔</div>
+        <div class="chip">空き枠はカレンダー同期</div>
+        <div class="chip">所要 20分</div>
+      </div>
+    </header>
 
-      <main class="p-6 space-y-6">
-        <div id="userInfo" class="flex items-center p-3.5 bg-indigo-50/60 border border-indigo-100 rounded-xl">
-          <div class="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold mr-3 shadow-sm">
-            👤
-          </div>
+    <main class="content">
+      <section class="account" aria-label="予約アカウント">
+        <div class="avatar" id="userInitial">K</div>
+        <div>
+          <p class="account-label">予約アカウント</p>
+          <p class="account-name" id="userNameDisplay">読み込み中...</p>
+        </div>
+      </section>
+
+      <section class="calendar-card">
+        <div class="calendar-head">
           <div>
-            <p class="text-xs text-slate-500 font-medium">予約アカウント</p>
-            <p id="userNameDisplay" class="text-sm font-bold text-slate-800">読み込み中...</p>
+            <h2>空き枠を選択</h2>
+            <p>表示されている時刻だけが予約可能です。</p>
           </div>
+          <a class="open-link" href="https://calendar.app.google/oaXa4EBS8wv6bxYm8" target="_blank" rel="noopener">大きい画面で開く</a>
         </div>
+        <iframe
+          class="calendar-frame"
+          title="Kepty English レッスン予約カレンダー"
+          src="https://calendar.google.com/calendar/appointments/schedules/AcZssZ3vDOMtOYdRH63zr3OgFczbefoKtlO-osikqEHW140w0CHkUj2HP7hwhnREH4adbKr_C198n5Iv?gv=true&hl=ja"
+          loading="lazy"
+        ></iframe>
+      </section>
 
-        <div>
-          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">1. 日付を選択</label>
-          <input type="date" id="dateSelect" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-700">
-        </div>
+      <section class="guide">
+        <h2>予約の流れ</h2>
+        <ol class="steps">
+          <li>
+            <span class="step-num">1</span>
+            <div>
+              <strong>日付を選ぶ</strong>
+              <span>青い日付が予約できる日です。</span>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">2</span>
+            <div>
+              <strong>開始時刻を選ぶ</strong>
+              <span>空き枠は20分間隔です。</span>
+            </div>
+          </li>
+          <li>
+            <span class="step-num">3</span>
+            <div>
+              <strong>予約を確定する</strong>
+              <span>名前と連絡先を入れて完了です。</span>
+            </div>
+          </li>
+        </ol>
+      </section>
 
-        <div>
-          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">2. 時間を選択（各枠60分）</label>
-          <div id="timeSlots" class="grid grid-cols-2 gap-2.5"></div>
-        </div>
-      </main>
-    </div>
-
-    <div class="p-5 border-t border-slate-100 bg-white sticky bottom-0">
-      <button id="submitBtn" class="w-full bg-indigo-600 text-white font-bold py-4 px-4 rounded-xl opacity-50 cursor-not-allowed transition duration-200 shadow-md" disabled>
-        日時を選択してください
-      </button>
-    </div>
-  </div>
-
-  <div id="modal" class="fixed inset-0 bg-slate-900/60 flex items-center justify-center p-4 hidden backdrop-blur-sm">
-    <div class="bg-white rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl">
-      <div class="w-14 h-14 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl font-bold">✓</div>
-      <h3 class="text-lg font-bold text-slate-800 mb-2">予約が完了しました！</h3>
-      <p id="modalMessage" class="text-sm text-slate-600 mb-6"></p>
-      <button onclick="liff.closeWindow()" class="w-full bg-slate-800 text-white font-bold py-3 rounded-xl hover:bg-slate-700">
-        画面を閉じる
-      </button>
-    </div>
+      <p class="note">空き枠と所要時間は Googleカレンダーの予約スケジュールと同期しています。表示されている開始時刻（20分間隔）だけが予約できます。</p>
+    </main>
   </div>
 
   <script>
-    // ==========================================
-    // 基本設定
-    // ==========================================
-    const LIFF_ID = "2009159043-q2GIlpyC"; // LINEログインで作成したLIFF ID
-    const GAS_URL = "https://script.google.com/a/macros/kepty.co/s/AKfycbx516RKAUhQsR8qMiMocJb0fEfAyZFfFXXAGJ5TPdjpgfISYLRNQKJVkVPcIWSL4nsb8g/exec"; // GASのWebアプリURL
+    const LIFF_ID = "2009159043-q2GIlpyC";
 
-    let currentUserId = "LINE_USER_DUMMY";
-    let currentUserName = "ゲスト";
-    let selectedTime = "";
+    function setUser(name) {
+      const display = document.getElementById("userNameDisplay");
+      const initial = document.getElementById("userInitial");
+      display.textContent = name;
+      initial.textContent = (name || "K").trim().charAt(0).toUpperCase();
+    }
 
     document.addEventListener("DOMContentLoaded", async () => {
-      // LIFF初期化
       try {
         await liff.init({ liffId: LIFF_ID });
         if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();
-          currentUserId = profile.userId;
-          currentUserName = profile.displayName;
-          document.getElementById('userNameDisplay').innerText = currentUserName;
-        } else {
+          setUser(profile.displayName);
+        } else if (liff.isInClient()) {
           liff.login();
+        } else {
+          setUser("ゲスト");
         }
       } catch (err) {
-        document.getElementById('userNameDisplay').innerText = "テストユーザー";
+        setUser("ゲスト");
       }
-
-      const dateSelect = document.getElementById('dateSelect');
-      const today = new Date().toISOString().split('T')[0];
-      dateSelect.value = today;
-      dateSelect.min = today;
-      dateSelect.addEventListener('change', loadTimeSlots);
-      loadTimeSlots();
     });
-
-    async function loadTimeSlots() {
-      const timeSlotsDiv = document.getElementById('timeSlots');
-      timeSlotsDiv.innerHTML = '<div class="col-span-2 text-center py-8 text-slate-400 text-sm">カレンダーから空き枠を確認中...</div>';
-      
-      try {
-        const response = await fetch(`${GAS_URL}?date=${document.getElementById('dateSelect').value}`);
-        const slots = await response.json();
-        displayTimeSlots(slots);
-      } catch (error) {
-        timeSlotsDiv.innerHTML = '<div class="col-span-2 text-center py-4 text-red-500 text-sm">空き枠の取得に失敗しました</div>';
-      }
-    }
-
-    function displayTimeSlots(slots) {
-      const timeSlotsDiv = document.getElementById('timeSlots');
-      timeSlotsDiv.innerHTML = '';
-      
-      slots.forEach(slot => {
-        const btn = document.createElement('button');
-        btn.innerText = slot.time;
-        if (slot.available) {
-          btn.className = "py-3 px-4 border border-indigo-200 bg-indigo-50/30 text-indigo-600 font-bold rounded-xl hover:bg-indigo-600 hover:text-white transition duration-150 shadow-sm";
-          btn.onclick = () => selectTime(btn, slot.time);
-        } else {
-          btn.className = "py-3 px-4 bg-slate-100 text-slate-300 font-medium rounded-xl cursor-not-allowed line-through";
-          btn.disabled = true;
-        }
-        timeSlotsDiv.appendChild(btn);
-      });
-    }
-
-    function selectTime(clickedBtn, time) {
-      document.querySelectorAll('#timeSlots button').forEach(b => {
-        if(!b.disabled) {
-          b.className = "py-3 px-4 border border-indigo-200 bg-indigo-50/30 text-indigo-600 font-bold rounded-xl hover:bg-indigo-600 hover:text-white transition duration-150 shadow-sm";
-        }
-      });
-      
-      clickedBtn.className = "py-3 px-4 bg-indigo-600 text-white font-bold rounded-xl shadow-md ring-2 ring-indigo-600 ring-offset-2";
-      selectedTime = time;
-      
-      const submitBtn = document.getElementById('submitBtn');
-      submitBtn.disabled = false;
-      submitBtn.innerText = "この日時で予約を確定する";
-      submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-      submitBtn.onclick = submitReservation;
-    }
-
-    async function submitReservation() {
-      const date = document.getElementById('dateSelect').value;
-      const submitBtn = document.getElementById('submitBtn');
-      submitBtn.innerText = "予約処理中...";
-      submitBtn.disabled = true;
-
-      try {
-        const response = await fetch(GAS_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: JSON.stringify({
-            userId: currentUserId,
-            userName: currentUserName,
-            date: date,
-            time: selectedTime
-          })
-        });
-        const result = await response.json();
-        
-        if (result.success) {
-          document.getElementById('modalMessage').innerText = result.message;
-          document.getElementById('modal').classList.remove('hidden');
-        } else {
-          alert(result.message);
-          loadTimeSlots();
-        }
-      } catch (error) {
-        alert("通信エラーが発生しました");
-      } finally {
-        submitBtn.innerText = "この日時で予約を確定する";
-        submitBtn.disabled = false;
-      }
-    }
   </script>
 </body>
 </html>

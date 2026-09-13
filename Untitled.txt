@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html>
+<!-- head部分やbody部分のHTMLデザインは先ほどと全く同じです -->
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-800 font-sans">
+  <!-- 先ほどの <div class="max-w-md mx-auto ...> から </main> </div> までをそのまま入れてください -->
+  <div class="max-w-md mx-auto bg-white min-h-screen shadow-md">
+    <!-- デザイン部分は省略せずに先ほどのものをコピペしてください -->
+    <header class="bg-blue-600 text-white p-4 text-center shadow"><h1 class="text-xl font-bold tracking-wider">ご予約フォーム</h1></header>
+    <main class="p-5">
+      <div class="mb-8">
+        <h2 class="text-sm font-bold text-gray-500 mb-2">日付</h2>
+        <input type="date" id="dateSelect" class="w-full p-3 border border-gray-300 rounded-lg text-lg">
+      </div>
+      <div class="mb-8">
+        <h2 class="text-sm font-bold text-gray-500 mb-2">時間</h2>
+        <div id="timeSlots" class="grid grid-cols-2 gap-3"></div>
+      </div>
+      <button id="submitBtn" class="w-full bg-blue-600 text-white py-4 px-4 rounded-xl opacity-50 cursor-not-allowed" disabled>日時を選択してください</button>
+    </main>
+  </div>
+
+  <script>
+    // ★先ほどコピーしたGASのウェブアプリURLをここに貼り付けます
+    const GAS_URL = "https://script.google.com/macros/s/あなたのGASのURL/exec";
+    
+    let selectedTime = "";
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const dateSelect = document.getElementById('dateSelect');
+      const today = new Date().toISOString().split('T')[0];
+      dateSelect.value = today;
+      dateSelect.min = today;
+      dateSelect.addEventListener('change', loadTimeSlots);
+      loadTimeSlots();
+    });
+
+    // 変更点1：GASから空き枠を取得する（GETリクエスト）
+    async function loadTimeSlots() {
+      const timeSlotsDiv = document.getElementById('timeSlots');
+      timeSlotsDiv.innerHTML = '<p class="text-gray-400 text-sm col-span-2 text-center py-4">読み込み中...</p>';
+      
+      try {
+        const response = await fetch(`${GAS_URL}?date=${document.getElementById('dateSelect').value}`);
+        const slots = await response.json();
+        displayTimeSlots(slots);
+      } catch (error) {
+        timeSlotsDiv.innerHTML = '<p class="text-red-500">エラーが発生しました</p>';
+      }
+    }
+
+    function displayTimeSlots(slots) {
+      const timeSlotsDiv = document.getElementById('timeSlots');
+      timeSlotsDiv.innerHTML = '';
+      slots.forEach(slot => {
+        const btn = document.createElement('button');
+        btn.innerText = slot.time;
+        if (slot.available) {
+          btn.className = "py-3 px-4 border border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50";
+          btn.onclick = () => selectTime(btn, slot.time);
+        } else {
+          btn.className = "py-3 px-4 bg-gray-100 text-gray-400 rounded-lg line-through";
+          btn.disabled = true;
+        }
+        timeSlotsDiv.appendChild(btn);
+      });
+    }
+
+    function selectTime(clickedBtn, time) {
+      document.querySelectorAll('#timeSlots button').forEach(b => {
+        if(!b.disabled) b.className = "py-3 px-4 border border-blue-500 text-blue-600 rounded-lg hover:bg-blue-50";
+      });
+      clickedBtn.className = "py-3 px-4 bg-blue-600 text-white rounded-lg";
+      selectedTime = time;
+      
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = false;
+      submitBtn.innerText = "予約を確定する";
+      submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      submitBtn.onclick = submitReservation;
+    }
+
+    // 変更点2：予約データをGASへ送信する（POSTリクエスト）
+    async function submitReservation() {
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.innerText = "処理中...";
+      submitBtn.disabled = true;
+
+      try {
+        const response = await fetch(GAS_URL, {
+          method: 'POST',
+          // ※GAS特有のセキュリティエラー（CORS）を避けるため、text/plainで送るのが鉄則です
+          headers: { 'Content-Type': 'text/plain' },
+          body: JSON.stringify({
+            userId: "LINE_USER_ID_DUMMY",
+            date: document.getElementById('dateSelect').value,
+            time: selectedTime
+          })
+        });
+        const result = await response.json();
+        alert(result.message);
+        submitBtn.innerText = "予約完了";
+      } catch (error) {
+        alert("エラーが発生しました");
+        submitBtn.innerText = "予約を確定する";
+        submitBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
