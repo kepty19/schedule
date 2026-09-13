@@ -32,30 +32,29 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    body {
-      display: flex;
-      justify-content: center;
-    }
+    body { display: flex; justify-content: center; }
 
     .app {
       width: 100%;
-      max-width: 880px;
+      max-width: 430px;
       min-height: 100vh;
       background: var(--paper);
       box-shadow: 0 18px 50px rgba(42, 11, 2, 0.08);
+      display: flex;
+      flex-direction: column;
     }
 
     .hero {
       background: linear-gradient(160deg, #CE4A22 0%, #B33D1B 55%, #8F2E12 100%);
       color: #fff;
-      padding: 28px 24px 26px;
+      padding: 24px 20px 22px;
     }
 
     .brand {
       display: flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 18px;
+      margin-bottom: 14px;
     }
 
     .brand-mark {
@@ -68,11 +67,10 @@
       place-items: center;
       font-size: 13px;
       font-weight: 800;
-      letter-spacing: -0.04em;
     }
 
     .brand-name {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.14em;
       text-transform: uppercase;
@@ -81,7 +79,7 @@
 
     .hero h1 {
       margin: 0 0 8px;
-      font-size: 28px;
+      font-size: 26px;
       line-height: 1.2;
       letter-spacing: -0.03em;
       font-weight: 800;
@@ -89,55 +87,51 @@
 
     .hero p {
       margin: 0;
-      font-size: 14px;
+      font-size: 13px;
       line-height: 1.7;
-      color: rgba(255,255,255,0.88);
-      max-width: 36em;
+      color: rgba(255,255,255,0.9);
     }
 
     .meta-row {
       display: flex;
       flex-wrap: wrap;
       gap: 8px;
-      margin-top: 18px;
+      margin-top: 14px;
     }
 
     .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 11px;
+      padding: 6px 10px;
       border-radius: 999px;
       background: rgba(255,255,255,0.14);
       border: 1px solid rgba(255,255,255,0.2);
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
     }
 
     .content {
-      padding: 22px 20px 36px;
+      padding: 16px 16px 24px;
+      flex: 1;
     }
 
     .account,
-    .guide,
-    .calendar-card {
+    .panel {
       background: #fff;
       border: 1px solid var(--line);
-      border-radius: 20px;
+      border-radius: 18px;
     }
 
     .account {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 14px 16px;
+      padding: 12px 14px;
       background: var(--kepty-light-orange);
       border-color: var(--kepty-mid-orange);
     }
 
     .avatar {
-      width: 42px;
-      height: 42px;
+      width: 40px;
+      height: 40px;
       border-radius: 50%;
       background: var(--kepty-orange);
       color: #fff;
@@ -162,127 +156,167 @@
       font-weight: 800;
     }
 
-    .guide {
-      margin-top: 16px;
-      padding: 16px 18px 6px;
+    .line-note {
+      margin: 8px 2px 0;
+      font-size: 12px;
+      line-height: 1.6;
+      color: var(--muted);
     }
 
-    .guide h2 {
-      margin: 0 0 12px;
-      font-size: 13px;
+    .panel {
+      margin-top: 14px;
+      padding: 16px;
+    }
+
+    .panel label,
+    .panel h2 {
+      display: block;
+      margin: 0 0 10px;
+      font-size: 12px;
       font-weight: 800;
-      letter-spacing: 0.08em;
+      letter-spacing: 0.06em;
       color: var(--kepty-orange);
     }
 
-    .steps {
-      list-style: none;
-      margin: 0;
-      padding: 0;
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 4px;
-    }
-
-    @media (min-width: 720px) {
-      .steps {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 12px;
-      }
-    }
-
-    .steps li {
-      display: grid;
-      grid-template-columns: 28px 1fr;
-      gap: 12px;
-      padding: 0 0 12px;
-      font-size: 14px;
-      line-height: 1.55;
+    #dateSelect {
+      width: 100%;
+      padding: 14px 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      font-size: 16px;
+      font-weight: 700;
       color: var(--ink);
     }
 
-    .step-num {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
+    #dateSelect:focus {
+      outline: 2px solid var(--kepty-mid-orange);
+      border-color: var(--kepty-orange);
+    }
+
+    #timeSlots {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .slot {
+      padding: 12px 6px;
+      border-radius: 14px;
+      border: 1.5px solid var(--kepty-mid-orange);
+      background: var(--kepty-light-orange);
+      color: var(--kepty-orange-deep);
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .slot:hover { background: #ffd8cc; }
+
+    .slot.is-selected {
+      background: var(--kepty-orange);
+      border-color: var(--kepty-orange);
+      color: #fff;
+    }
+
+    .slot:disabled {
+      background: #f4eeeb;
+      border-color: #eadfd9;
+      color: #c4b7b1;
+      text-decoration: line-through;
+      cursor: not-allowed;
+    }
+
+    .status {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 28px 8px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .status.is-error { color: #b42318; }
+
+    .footer {
+      position: sticky;
+      bottom: 0;
+      padding: 12px 16px 20px;
+      background: linear-gradient(to top, var(--paper) 70%, transparent);
+    }
+
+    #submitBtn {
+      width: 100%;
+      border: 0;
+      border-radius: 16px;
+      padding: 16px 12px;
       background: var(--kepty-orange);
       color: #fff;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    #submitBtn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(42, 11, 2, 0.45);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal.is-open { display: flex; }
+
+    .modal-card {
+      width: 100%;
+      max-width: 360px;
+      background: #fff;
+      border-radius: 22px;
+      padding: 24px 20px;
+      text-align: center;
+    }
+
+    .modal-icon {
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 12px;
+      border-radius: 50%;
+      background: var(--kepty-light-orange);
+      color: var(--kepty-orange);
       display: grid;
       place-items: center;
-      font-size: 12px;
+      font-size: 24px;
       font-weight: 800;
     }
 
-    .steps strong {
-      display: block;
-      font-size: 15px;
-      margin-bottom: 2px;
-    }
-
-    .steps span {
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .calendar-card {
-      margin-top: 16px;
-      overflow: hidden;
-    }
-
-    .calendar-head {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      gap: 12px;
-      padding: 16px 18px 12px;
-      border-bottom: 1px solid var(--line);
-    }
-
-    .calendar-head h2 {
-      margin: 0;
+    .modal-card h3 {
+      margin: 0 0 8px;
       font-size: 18px;
-      font-weight: 800;
-      letter-spacing: -0.02em;
     }
 
-    .calendar-head p {
-      margin: 4px 0 0;
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.5;
-    }
-
-    .open-link {
-      flex-shrink: 0;
-      color: var(--kepty-orange);
-      font-size: 13px;
-      font-weight: 700;
-      text-decoration: none;
-      border-bottom: 1.5px solid var(--kepty-mid-orange);
-      padding-bottom: 1px;
-    }
-
-    .calendar-frame {
-      width: 100%;
-      min-height: 760px;
-      border: 0;
-      background: #fff;
-    }
-
-    .note {
-      margin: 14px 4px 0;
-      font-size: 12px;
+    .modal-card p {
+      margin: 0 0 18px;
+      font-size: 14px;
       line-height: 1.7;
       color: var(--muted);
     }
 
-    @media (max-width: 720px) {
-      .hero { padding: 22px 18px 20px; }
-      .hero h1 { font-size: 24px; }
-      .content { padding: 16px 14px 28px; }
-      .calendar-head { flex-direction: column; }
-      .calendar-frame { min-height: 1040px; }
-      .hero p { font-size: 13px; }
+    .modal-card button {
+      width: 100%;
+      border: 0;
+      border-radius: 14px;
+      padding: 13px;
+      background: var(--ink);
+      color: #fff;
+      font-weight: 800;
+      cursor: pointer;
     }
   </style>
 </head>
@@ -294,10 +328,10 @@
         <div class="brand-name">Kepty English</div>
       </div>
       <h1>レッスン予約</h1>
-      <p>Googleカレンダーの予約可能時間から、開始時刻を20分間隔で選べます。確定後、カレンダーに予定が追加されます。</p>
+      <p>公式LINEから開くとご本人を確認し、開始1時間前にリマインドを送ります。空き枠は Googleカレンダーと同期しています。</p>
       <div class="meta-row">
+        <div class="chip">LINEで本人確認</div>
         <div class="chip">20分間隔</div>
-        <div class="chip">空き枠はカレンダー同期</div>
         <div class="chip">所要 20分</div>
       </div>
     </header>
@@ -306,81 +340,193 @@
       <section class="account" aria-label="予約アカウント">
         <div class="avatar" id="userInitial">K</div>
         <div>
-          <p class="account-label">予約アカウント</p>
+          <p class="account-label">LINEアカウント</p>
           <p class="account-name" id="userNameDisplay">読み込み中...</p>
         </div>
       </section>
+      <p class="line-note" id="lineNote">公式LINEの予約メニューから開いてください。</p>
 
-      <section class="calendar-card">
-        <div class="calendar-head">
-          <div>
-            <h2>空き枠を選択</h2>
-            <p>表示されている時刻だけが予約可能です。</p>
-          </div>
-          <a class="open-link" href="https://calendar.app.google/oaXa4EBS8wv6bxYm8" target="_blank" rel="noopener">大きい画面で開く</a>
+      <section class="panel">
+        <label for="dateSelect">1. 日付</label>
+        <input type="date" id="dateSelect">
+      </section>
+
+      <section class="panel">
+        <h2>2. 開始時刻（20分間隔）</h2>
+        <div id="timeSlots">
+          <div class="status">日付を選ぶと空き枠を表示します</div>
         </div>
-        <iframe
-          class="calendar-frame"
-          title="Kepty English レッスン予約カレンダー"
-          src="https://calendar.google.com/calendar/appointments/schedules/AcZssZ3vDOMtOYdRH63zr3OgFczbefoKtlO-osikqEHW140w0CHkUj2HP7hwhnREH4adbKr_C198n5Iv?gv=true&hl=ja"
-          loading="lazy"
-        ></iframe>
       </section>
-
-      <section class="guide">
-        <h2>予約の流れ</h2>
-        <ol class="steps">
-          <li>
-            <span class="step-num">1</span>
-            <div>
-              <strong>日付を選ぶ</strong>
-              <span>青い日付が予約できる日です。</span>
-            </div>
-          </li>
-          <li>
-            <span class="step-num">2</span>
-            <div>
-              <strong>開始時刻を選ぶ</strong>
-              <span>空き枠は20分間隔です。</span>
-            </div>
-          </li>
-          <li>
-            <span class="step-num">3</span>
-            <div>
-              <strong>予約を確定する</strong>
-              <span>名前と連絡先を入れて完了です。</span>
-            </div>
-          </li>
-        </ol>
-      </section>
-
-      <p class="note">空き枠と所要時間は Googleカレンダーの予約スケジュールと同期しています。表示されている開始時刻（20分間隔）だけが予約できます。</p>
     </main>
+
+    <div class="footer">
+      <button id="submitBtn" type="button" disabled>日時を選択してください</button>
+    </div>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="modal-card">
+      <div class="modal-icon">✓</div>
+      <h3>予約が完了しました</h3>
+      <p id="modalMessage"></p>
+      <button type="button" id="closeModal">画面を閉じる</button>
+    </div>
   </div>
 
   <script>
     const LIFF_ID = "2009159043-q2GIlpyC";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbx516RKAUhQsR8qMiMocJb0fEfAyZFfFXXAGJ5TPdjpgfISYLRNQKJVkVPcIWSL4nsb8g/exec";
 
-    function setUser(name) {
-      const display = document.getElementById("userNameDisplay");
-      const initial = document.getElementById("userInitial");
-      display.textContent = name;
-      initial.textContent = (name || "K").trim().charAt(0).toUpperCase();
+    let currentUserId = "";
+    let currentUserName = "ゲスト";
+    let selectedTime = "";
+    let inLine = false;
+
+    function tokyoToday() {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Tokyo",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(new Date());
+    }
+
+    function setUser(name, userId) {
+      currentUserName = name;
+      currentUserId = userId || "";
+      document.getElementById("userNameDisplay").textContent = name;
+      document.getElementById("userInitial").textContent = (name || "K").trim().charAt(0).toUpperCase();
+      const note = document.getElementById("lineNote");
+      if (currentUserId) {
+        note.textContent = "このLINEアカウント宛に、予約確認と1時間前のリマインドを送ります。";
+      } else {
+        note.textContent = "リマインドを受け取るには、公式LINEの予約メニューから開いてください。";
+      }
+    }
+
+    function resetSubmit(label) {
+      const submitBtn = document.getElementById("submitBtn");
+      selectedTime = "";
+      submitBtn.disabled = true;
+      submitBtn.textContent = label || "日時を選択してください";
+    }
+
+    async function loadTimeSlots() {
+      const timeSlotsDiv = document.getElementById("timeSlots");
+      const date = document.getElementById("dateSelect").value;
+      resetSubmit();
+      timeSlotsDiv.innerHTML = '<div class="status">Googleカレンダーの空き枠を確認中...</div>';
+
+      try {
+        const response = await fetch(`${GAS_URL}?date=${encodeURIComponent(date)}`);
+        const data = await response.json();
+        const slots = Array.isArray(data) ? data : (data.slots || []);
+        if (!slots.length) {
+          timeSlotsDiv.innerHTML = '<div class="status">この日に予約できる枠はありません</div>';
+          return;
+        }
+        displayTimeSlots(slots);
+      } catch (error) {
+        timeSlotsDiv.innerHTML = '<div class="status is-error">空き枠の取得に失敗しました。公式LINEから開き直すか、しばらくして再度お試しください。</div>';
+      }
+    }
+
+    function displayTimeSlots(slots) {
+      const timeSlotsDiv = document.getElementById("timeSlots");
+      timeSlotsDiv.innerHTML = "";
+      slots.forEach((slot) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "slot";
+        btn.textContent = slot.time;
+        if (!slot.available) {
+          btn.disabled = true;
+        } else {
+          btn.addEventListener("click", () => selectTime(btn, slot.time));
+        }
+        timeSlotsDiv.appendChild(btn);
+      });
+    }
+
+    function selectTime(clickedBtn, time) {
+      document.querySelectorAll(".slot").forEach((btn) => btn.classList.remove("is-selected"));
+      clickedBtn.classList.add("is-selected");
+      selectedTime = time;
+      const submitBtn = document.getElementById("submitBtn");
+      submitBtn.disabled = false;
+      submitBtn.textContent = `${time} で予約する`;
+    }
+
+    async function submitReservation() {
+      const submitBtn = document.getElementById("submitBtn");
+      if (!currentUserId) {
+        alert("公式LINEの予約メニューから開いてください。");
+        return;
+      }
+      submitBtn.textContent = "予約処理中...";
+      submitBtn.disabled = true;
+
+      try {
+        const response = await fetch(GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            userId: currentUserId,
+            userName: currentUserName,
+            date: document.getElementById("dateSelect").value,
+            time: selectedTime
+          })
+        });
+        const result = await response.json();
+        if (result.success) {
+          document.getElementById("modalMessage").textContent = result.message;
+          document.getElementById("modal").classList.add("is-open");
+        } else {
+          alert(result.message || "予約できませんでした");
+          loadTimeSlots();
+        }
+      } catch (error) {
+        alert("通信エラーが発生しました");
+        submitBtn.disabled = false;
+        submitBtn.textContent = `${selectedTime} で予約する`;
+      }
     }
 
     document.addEventListener("DOMContentLoaded", async () => {
+      const dateSelect = document.getElementById("dateSelect");
+      const today = tokyoToday();
+      dateSelect.value = today;
+      dateSelect.min = today;
+      dateSelect.addEventListener("change", loadTimeSlots);
+      document.getElementById("submitBtn").addEventListener("click", submitReservation);
+      document.getElementById("closeModal").addEventListener("click", () => {
+        if (inLine && window.liff && liff.isInClient()) {
+          liff.closeWindow();
+        } else {
+          document.getElementById("modal").classList.remove("is-open");
+          loadTimeSlots();
+        }
+      });
+
+      loadTimeSlots();
+
       try {
-        await liff.init({ liffId: LIFF_ID });
+        await Promise.race([
+          liff.init({ liffId: LIFF_ID }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("liff timeout")), 4000))
+        ]);
+        inLine = liff.isInClient();
         if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();
-          setUser(profile.displayName);
+          setUser(profile.displayName, profile.userId);
         } else if (liff.isInClient()) {
           liff.login();
+          return;
         } else {
-          setUser("ゲスト");
+          setUser("ゲスト", "");
         }
       } catch (err) {
-        setUser("ゲスト");
+        setUser("ゲスト", "");
       }
     });
   </script>
