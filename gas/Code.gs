@@ -12,15 +12,22 @@
  * 4. 発行される URL は必ず
  *    https://script.google.com/macros/s/..../exec
  *    （/a/macros/kepty.co/ だと LINE 内からログインを要求され、空き枠取得に失敗します）
- * 空き枠は「Online Lesson Booking Slot」が出ている時間だけ。
- * それが講師の稼働時間であり、予約可能な枠です。無い日は枠を出しません。
- * 予約確定時は同じカレンダーに「レッスン予約（名前）」を作成します。
+ * 空き枠の出どころ（重要）:
+ * Googleの予約スケジュール「Online Lesson Booking Slot」の未予約枠は
+ * カレンダー予定として存在しない（公式ヘルプ: 未予約の予定はカレンダーに出ない）。
+ * CalendarApp.getEvents では稼働時間は取れない。
+ * そのため稼働時間は予約ページと同じ定義（平日 16:30開始〜19:30開始 / 20分）で切り、
+ * カレンダーは LINE から入った「レッスン予約」の埋め済み判定にだけ使う。
+ * 予約確定時は同じカレンダーに「レッスン予約（名前）」を作成する。
  */
 
 var TZ = 'Asia/Tokyo';
 var SLOT_MINUTES = 20;
 var DURATION_MINUTES = 20;
 var LEAD_MINUTES = 60;
+var FIRST_SLOT = '16:30';
+var LAST_SLOT = '19:30';
+var WEEKDAYS = [1, 2, 3, 4, 5];
 var SCHEDULE_NAME = 'Online Lesson Booking Slot';
 
 function doGet(e) {
@@ -100,35 +107,30 @@ function sendReminders() {
 }
 
 /**
- * 空き枠の唯一のルール:
- *   「Online Lesson Booking Slot」= 講師の稼働時間 = 予約できる
- *   「レッスン予約」= すでに取られた枠
- *
- * やってはいけないこと（以前ここで壊した）:
- *   - 稼働枠を busy にする / ゲスト有無で埋め済みにする
- *   - 稼働枠が無い日に 16:30〜19:30 を捏造する
+ * 空き枠 = 稼働時間（平日 16:30〜19:30開始）から、レッスン予約を除いたもの。
+ * 未予約の Appointment Schedule を getEvents で探してはいけない（カレンダーに無い）。
  */
 function buildSlots_(date) {
-  if (date < tokyoDateString_(new Date())) return [];
+  if (date <= tokyoDateString_(new Date())) return [];
 
   var startDay = parseTokyoDate_(date);
-  var events = getCalendar_().getEvents(startDay, endOfDay_(startDay));
-  var windows = [];
-  var busy = [];
+  var weekday = Number(Utilities.formatDate(startDay, TZ, 'u'));
+  if (WEEKDAYS.indexOf(weekday) === -1) return [];
 
-  events.forEach(function (event) {
-    if (isScheduleNamed_(event)) {
-      if (!event.isAllDayEvent()) {
-        windows.push({ start: event.getStartTime(), end: event.getEndTime() });
-      }
-      return;
-    }
+  var window = {
+    start: slotStart_(date, FIRST_SLOT),
+    end: new Date(slotStart_(date, LAST_SLOT).getTime() + DURATION_MINUTES * 60 * 1000)
+  };
+
+  var busy = [];
+  getCalendar_().getEvents(startDay, endOfDay_(startDay)).forEach(function (event) {
+    if (isScheduleNamed_(event)) return;
     if (isOurBooking_(event)) {
       busy.push({ start: event.getStartTime(), end: event.getEndTime() });
     }
   });
 
-  return slotsFromWindows_(mergeWindows_(windows), busy);
+  return slotsFromWindows_([window], busy);
 }
 
 function slotsFromWindows_(windows, busy) {
@@ -168,23 +170,6 @@ function addAvailableSlot_(start, latest, busy, seen, slots) {
   var slotEnd = new Date(start.getTime() + DURATION_MINUTES * 60 * 1000);
   if (overlapsBusy_(start, slotEnd, busy)) return;
   slots.push({ time: time, available: true });
-}
-
-function mergeWindows_(windows) {
-  if (!windows.length) return [];
-  windows.sort(function (a, b) {
-    return a.start.getTime() - b.start.getTime();
-  });
-  var merged = [windows[0]];
-  for (var i = 1; i < windows.length; i++) {
-    var last = merged[merged.length - 1];
-    if (windows[i].start.getTime() <= last.end.getTime() + 1000) {
-      if (windows[i].end.getTime() > last.end.getTime()) last.end = windows[i].end;
-    } else {
-      merged.push(windows[i]);
-    }
-  }
-  return merged;
 }
 
 function isScheduleNamed_(event) {
