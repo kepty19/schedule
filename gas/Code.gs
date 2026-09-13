@@ -99,16 +99,18 @@ function sendReminders() {
 }
 
 function buildSlots_(date) {
+  if (date <= tokyoDateString_(new Date())) return [];
+
   var startDay = parseTokyoDate_(date);
   var endDay = endOfDay_(startDay);
   var events = getCalendar_().getEvents(startDay, endDay);
   var windows = [];
   var busy = [];
-  var namedSlots = [];
+  var openings = [];
 
   events.forEach(function (event) {
     if (event.isAllDayEvent()) {
-      if (!isScheduleNamed_(event)) {
+      if (isConfirmedBusy_(event)) {
         busy.push({ start: startDay, end: endDay });
       }
       return;
@@ -119,13 +121,18 @@ function buildSlots_(date) {
       return;
     }
     if (isScheduleNamed_(event) && Math.abs(durationMin - DURATION_MINUTES) <= 5) {
-      namedSlots.push(event);
+      if (isConfirmedBusy_(event)) {
+        busy.push({ start: event.getStartTime(), end: event.getEndTime() });
+      } else {
+        openings.push(event);
+      }
+      return;
     }
     busy.push({ start: event.getStartTime(), end: event.getEndTime() });
   });
 
-  if (!windows.length && namedSlots.length) {
-    return namedSlotsToSlots_(namedSlots);
+  if (openings.length) {
+    return openingsToSlots_(openings, busy);
   }
   if (!windows.length) return [];
 
@@ -141,9 +148,7 @@ function buildSlots_(date) {
       var time = Utilities.formatDate(cursor, TZ, 'HH:mm');
       if (!seen[time]) {
         var tooSoon = cursor.getTime() < now.getTime() + LEAD_MINUTES * 60 * 1000;
-        var blocked = busy.some(function (block) {
-          return block.start.getTime() < slotEnd.getTime() && block.end.getTime() > cursor.getTime();
-        });
+        var blocked = overlapsBusy_(cursor, slotEnd, busy);
         slots.push({ time: time, available: !tooSoon && !blocked });
         seen[time] = true;
       }
@@ -154,21 +159,43 @@ function buildSlots_(date) {
   slots.sort(function (a, b) {
     return a.time < b.time ? -1 : 1;
   });
-  return slots;
+  return slots.filter(function (slot) { return slot.available; });
 }
 
-function namedSlotsToSlots_(namedSlots) {
+function openingsToSlots_(openings, busy) {
   var now = new Date();
-  return namedSlots.map(function (event) {
-    var tooSoon = event.getStartTime().getTime() < now.getTime() + LEAD_MINUTES * 60 * 1000;
-    var guests = event.getGuestList ? event.getGuestList() : [];
+  return openings.map(function (event) {
+    var start = event.getStartTime();
+    var end = event.getEndTime();
+    var tooSoon = start.getTime() < now.getTime() + LEAD_MINUTES * 60 * 1000;
     return {
-      time: Utilities.formatDate(event.getStartTime(), TZ, 'HH:mm'),
-      available: !tooSoon && (!guests || guests.length === 0)
+      time: Utilities.formatDate(start, TZ, 'HH:mm'),
+      available: !tooSoon && !overlapsBusy_(start, end, busy)
     };
+  }).filter(function (slot) {
+    return slot.available;
   }).sort(function (a, b) {
     return a.time < b.time ? -1 : 1;
   });
+}
+
+function overlapsBusy_(start, end, busy) {
+  return busy.some(function (block) {
+    return block.start.getTime() < end.getTime() && block.end.getTime() > start.getTime();
+  });
+}
+
+function isConfirmedBusy_(event) {
+  var title = String(event.getTitle() || '');
+  if (title.indexOf('レッスン予約') !== -1) return true;
+  var desc = event.getDescription() || '';
+  if (desc.indexOf('LINE_USER_ID:') !== -1) return true;
+  try {
+    var guests = event.getGuestList();
+    if (guests && guests.length) return true;
+  } catch (err) {}
+  if (!isScheduleNamed_(event)) return true;
+  return false;
 }
 
 function isScheduleNamed_(event) {
@@ -226,10 +253,7 @@ function sendLine_(userId, text) {
 }
 
 function slotStart_(date, time) {
-  var parts = time.split(':');
-  var start = parseTokyoDate_(date);
-  start.setHours(Number(parts[0]), Number(parts[1]), 0, 0);
-  return start;
+  return new Date(date + 'T' + time + ':00+09:00');
 }
 
 function parseTokyoDate_(date) {

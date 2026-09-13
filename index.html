@@ -132,16 +132,10 @@
       font-weight: 800;
     }
 
-    .line-note {
-      margin: 8px 2px 0;
-      font-size: 12px;
-      line-height: 1.6;
-      color: var(--muted);
-    }
-
     .panel {
       margin-top: 14px;
       padding: 16px;
+      overflow: hidden;
     }
 
     .panel label,
@@ -155,7 +149,10 @@
     }
 
     #dateSelect {
+      display: block;
       width: 100%;
+      max-width: 100%;
+      min-width: 0;
       padding: 14px 12px;
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -163,6 +160,9 @@
       font-size: 16px;
       font-weight: 700;
       color: var(--ink);
+      box-sizing: border-box;
+      -webkit-appearance: none;
+      appearance: none;
     }
 
     #dateSelect:focus {
@@ -314,7 +314,6 @@
           <p class="account-name" id="userNameDisplay">読み込み中...</p>
         </div>
       </section>
-      <p class="line-note" id="lineNote">公式LINEの予約メニューから開いてください。</p>
 
       <section class="panel">
         <label for="dateSelect">1. 日付</label>
@@ -366,12 +365,6 @@
       currentUserId = userId || "";
       document.getElementById("userNameDisplay").textContent = name;
       document.getElementById("userInitial").textContent = (name || "K").trim().charAt(0).toUpperCase();
-      const note = document.getElementById("lineNote");
-      if (currentUserId) {
-        note.textContent = "このLINEアカウント宛に、予約確認と1時間前のリマインドを送ります。";
-      } else {
-        note.textContent = "リマインドを受け取るには、公式LINEの予約メニューから開いてください。";
-      }
     }
 
     function resetSubmit(label) {
@@ -390,7 +383,7 @@
       try {
         const response = await fetch(`${GAS_URL}?date=${encodeURIComponent(date)}`);
         const data = await response.json();
-        const slots = Array.isArray(data) ? data : (data.slots || []);
+        const slots = (Array.isArray(data) ? data : (data.slots || [])).filter((slot) => slot.available);
         if (!slots.length) {
           timeSlotsDiv.innerHTML = '<div class="status">この日に予約できる枠はありません</div>';
           return;
