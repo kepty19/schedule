@@ -14,8 +14,9 @@
  * 3. デプロイ → 新しいデプロイ → ウェブアプリ
  *    - 次のユーザーとして実行: 自分
  *    - アクセスできるユーザー: 全員
- * 4. トリガー: syncAvailabilityToCalendar を1分おき
- *    （チェックを入れたら、カレンダーの稼働ブロックが追従する）
+ * 4. トリガー:
+ *    - checkAndSendReminders … 10分おき（前日21時のLINE案内。1時間前リマインドは送らない）
+ *    - syncAvailabilityToCalendar … 1分おき（スプシの稼働をカレンダーへ反映）
  */
 
 var TZ = 'Asia/Tokyo';
@@ -26,6 +27,8 @@ var SPREADSHEET_ID = '1OLiHIs7HjtlSxE9j3ETGhlE8efjiayomMpmYb-376U0';
 var SHEET_NAME = 'calendar';
 var AVAILABILITY_TITLE = 'Online Lesson Booking Slot';
 var AVAILABILITY_TAG = 'SHEET_AVAILABILITY:true';
+var ZOOM_URL = 'https://us06web.zoom.us/j/6038625058?pwd=WJSqJnqcblNawxi1lPtpVXtzK8r8OL.1';
+var WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'];
 
 function doGet(e) {
   try {
@@ -62,20 +65,17 @@ function doPost(e) {
     var end = new Date(start.getTime() + DURATION_MINUTES * 60 * 1000);
     var calendar = getCalendar_();
     var event = calendar.createEvent('レッスン予約（' + userName + '）', start, end, {
-      description: [
-        'LINE_USER_ID:' + userId,
-        'LINE_DISPLAY_NAME:' + userName,
-        'REMINDER_SENT:false'
-      ].join('\n')
+      description: bookingDescription_(userId, userName),
+      location: ZOOM_URL
     });
     event.setColor(CalendarApp.EventColor.ORANGE);
 
-    var whenText = formatWhen_(start);
-    sendLine_(userId, 'ご予約を受け付けました。\n' + whenText + '\n開始の1時間前に、こちらへリマインドをお送りします。');
+    var confirmText = bookingLineMessage_(start);
+    sendLine_(userId, confirmText);
 
     return json_({
       success: true,
-      message: whenText + ' で予約しました。レッスン1時間前にLINEでお知らせします。',
+      message: confirmText,
       eventId: event.getId()
     });
   } catch (err) {
@@ -86,25 +86,34 @@ function doPost(e) {
 }
 
 function sendReminders() {
-  var calendar = getCalendar_();
-  var now = new Date();
-  var from = new Date(now.getTime() + 50 * 60 * 1000);
-  var to = new Date(now.getTime() + 70 * 60 * 1000);
-  var events = calendar.getEvents(from, to);
-
-  events.forEach(function (event) {
-    var desc = event.getDescription() || '';
-    var userId = valueOf_(desc, 'LINE_USER_ID');
-    var sent = valueOf_(desc, 'REMINDER_SENT');
-    if (!userId || sent === 'true') return;
-
-    sendLine_(userId, 'まもなくレッスンです。\n' + formatWhen_(event.getStartTime()) + '\n準備ができたらお待ちしています。');
-    event.setDescription(desc.replace('REMINDER_SENT:false', 'REMINDER_SENT:true'));
-  });
+  sendEveReminders_();
 }
 
 function checkAndSendReminders() {
-  sendReminders();
+  sendEveReminders_();
+}
+
+function sendEveReminders_() {
+  var now = new Date();
+  if (Number(Utilities.formatDate(now, TZ, 'H')) !== 21) return;
+
+  var tomorrow = tokyoPlusDays_(1);
+  var events = getCalendar_().getEvents(parseTokyoDate_(tomorrow), endOfDay_(parseTokyoDate_(tomorrow)));
+
+  events.forEach(function (event) {
+    if (!isOurBooking_(event)) return;
+    var desc = event.getDescription() || '';
+    var userId = valueOf_(desc, 'LINE_USER_ID');
+    var sent = valueOf_(desc, 'PREV_DAY_REMINDER_SENT');
+    if (!userId || sent === 'true') return;
+
+    sendLine_(userId, eveLineMessage_(event.getStartTime()));
+    if (desc.indexOf('PREV_DAY_REMINDER_SENT:false') !== -1) {
+      event.setDescription(desc.replace('PREV_DAY_REMINDER_SENT:false', 'PREV_DAY_REMINDER_SENT:true'));
+    } else if (desc.indexOf('PREV_DAY_REMINDER_SENT:') === -1) {
+      event.setDescription(desc + '\nPREV_DAY_REMINDER_SENT:true');
+    }
+  });
 }
 
 function buildSlots_(date) {
@@ -355,8 +364,54 @@ function tokyoDateString_(date) {
   return Utilities.formatDate(date, TZ, 'yyyy-MM-dd');
 }
 
-function formatWhen_(date) {
-  return Utilities.formatDate(date, TZ, 'M月d日 HH:mm') + '〜';
+function tokyoPlusDays_(days) {
+  var parts = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd').split('-');
+  var utc = new Date(Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]) + days));
+  return utc.toISOString().slice(0, 10);
+}
+
+function weekdayJa_(date) {
+  var weekday = Number(Utilities.formatDate(date, TZ, 'u'));
+  return WEEKDAY_JA[weekday === 7 ? 0 : weekday];
+}
+
+function formatLessonWhen_(date) {
+  return Utilities.formatDate(date, TZ, 'M月d日') + '（' + weekdayJa_(date) + '）' +
+    Utilities.formatDate(date, TZ, 'HH:mm') + '〜';
+}
+
+function bookingLineMessage_(start) {
+  return [
+    'ご予約ありがとうございます。',
+    formatLessonWhen_(start),
+    '',
+    '当日は、下記リンクよりご入室ください。',
+    ZOOM_URL,
+    '',
+    'We look forward to seeing you✈️'
+  ].join('\n');
+}
+
+function eveLineMessage_(start) {
+  return [
+    '明日、英会話レッスンの予約がございます。',
+    formatLessonWhen_(start),
+    '',
+    '下記リンクよりご入室ください。',
+    ZOOM_URL,
+    '',
+    'We look forward to seeing you🎁'
+  ].join('\n');
+}
+
+function bookingDescription_(userId, userName) {
+  return [
+    'LINE_USER_ID:' + userId,
+    'LINE_DISPLAY_NAME:' + userName,
+    'PREV_DAY_REMINDER_SENT:false',
+    'Meeting Link',
+    ZOOM_URL
+  ].join('\n');
 }
 
 function valueOf_(desc, key) {

@@ -366,7 +366,7 @@
       const timeSlotsDiv = document.getElementById("timeSlots");
       const date = document.getElementById("dateSelect").value;
       resetSubmit();
-      timeSlotsDiv.innerHTML = '<div class="status">Googleカレンダーの空き枠を確認中...</div>';
+      timeSlotsDiv.innerHTML = '<div class="status">カレンダーの空き枠を確認中...</div>';
 
       try {
         const response = await fetch(`${GAS_URL}?date=${encodeURIComponent(date)}`);
