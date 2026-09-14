@@ -32,6 +32,12 @@ var WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'];
 
 function doGet(e) {
   try {
+    var action = (e && e.parameter && e.parameter.action) || 'slots';
+    if (action === 'bookings') {
+      var userId = String((e.parameter && e.parameter.userId) || '').trim();
+      if (!userId || userId === 'GUEST') return json_({ ok: true, bookings: [] });
+      return json_({ ok: true, bookings: listBookings_(userId) });
+    }
     var date = (e && e.parameter && e.parameter.date) || tokyoDateString_(new Date());
     return json_({ ok: true, slots: buildSlots_(date) });
   } catch (err) {
@@ -44,14 +50,20 @@ function doPost(e) {
   lock.waitLock(15000);
   try {
     var data = JSON.parse((e.postData && e.postData.contents) || '{}');
+    var action = String(data.action || 'book').trim();
     var userId = String(data.userId || '').trim();
     var userName = String(data.userName || 'ゲスト').trim();
-    var date = String(data.date || '').trim();
-    var time = String(data.time || '').trim();
 
     if (!userId || userId === 'GUEST') {
       return json_({ success: false, message: '公式LINEの予約メニューから開いてください。' });
     }
+
+    if (action === 'cancel') {
+      return json_(cancelBooking_(userId, String(data.eventId || '').trim()));
+    }
+
+    var date = String(data.date || '').trim();
+    var time = String(data.time || '').trim();
     if (!date || !time) {
       return json_({ success: false, message: '日時を選択してください。' });
     }
@@ -258,6 +270,73 @@ function onEdit(e) {
     if (sheet.getName() !== SHEET_NAME) return;
     syncAvailabilityToCalendar();
   } catch (err) {}
+}
+
+function listBookings_(userId) {
+  var now = new Date();
+  var to = parseTokyoDate_(tokyoPlusDays_(120));
+  var bookings = [];
+
+  getCalendar_().getEvents(now, to).forEach(function (event) {
+    if (!isOurBooking_(event)) return;
+    var desc = event.getDescription() || '';
+    if (valueOf_(desc, 'LINE_USER_ID') !== userId) return;
+    bookings.push({
+      eventId: event.getId(),
+      when: formatLessonWhen_(event.getStartTime()),
+      date: tokyoDateString_(event.getStartTime()),
+      time: Utilities.formatDate(event.getStartTime(), TZ, 'HH:mm'),
+      zoom: ZOOM_URL
+    });
+  });
+
+  bookings.sort(function (a, b) {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    return a.time < b.time ? -1 : 1;
+  });
+  return bookings;
+}
+
+function cancelBooking_(userId, eventId) {
+  if (!eventId) return { success: false, message: '予約が見つかりません。' };
+
+  var event = findOwnedBooking_(userId, eventId);
+  if (!event) return { success: false, message: '予約が見つかりません。' };
+  if (event.getStartTime().getTime() < new Date().getTime()) {
+    return { success: false, message: '開始済みの予約は取り消せません。' };
+  }
+
+  var when = formatLessonWhen_(event.getStartTime());
+  event.deleteEvent();
+  sendLine_(userId, cancelLineMessage_(when));
+  return { success: true, message: when + ' の予約を取り消しました。' };
+}
+
+function findOwnedBooking_(userId, eventId) {
+  try {
+    var event = getCalendar_().getEventById(eventId);
+    if (event && valueOf_(event.getDescription() || '', 'LINE_USER_ID') === userId) return event;
+  } catch (err) {}
+
+  var bookings = listBookings_(userId);
+  for (var i = 0; i < bookings.length; i++) {
+    if (bookings[i].eventId === eventId) {
+      try {
+        var found = getCalendar_().getEventById(bookings[i].eventId);
+        if (found) return found;
+      } catch (err2) {}
+    }
+  }
+  return null;
+}
+
+function cancelLineMessage_(when) {
+  return [
+    'ご予約を取り消しました。',
+    when,
+    '',
+    'またのご予約をお待ちしています。'
+  ].join('\n');
 }
 
 function findSlot_(date, time) {

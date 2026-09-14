@@ -199,6 +199,52 @@
 
     .status.is-error { color: #b42318; }
 
+    .booking-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .booking {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid var(--kepty-mid-orange);
+      border-radius: 14px;
+      background: var(--kepty-light-orange);
+    }
+
+    .booking-when {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 800;
+      line-height: 1.4;
+    }
+
+    .booking-note {
+      margin: 4px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .cancel-btn {
+      flex-shrink: 0;
+      border: 1.5px solid var(--kepty-orange);
+      border-radius: 12px;
+      padding: 8px 12px;
+      background: #fff;
+      color: var(--kepty-orange-deep);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    #bookingsList .status {
+      padding: 12px 4px;
+    }
+
     .footer {
       position: sticky;
       bottom: 0;
@@ -267,6 +313,7 @@
       font-size: 14px;
       line-height: 1.7;
       color: var(--muted);
+      white-space: pre-line;
     }
 
     .modal-card button {
@@ -296,6 +343,13 @@
         <div>
           <p class="account-label">LINEアカウント</p>
           <p class="account-name" id="userNameDisplay">読み込み中...</p>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="予約の確認">
+        <h2>ご予約の確認</h2>
+        <div id="bookingsList">
+          <div class="status">公式LINEから開くと、予約の確認ができます</div>
         </div>
       </section>
 
@@ -360,6 +414,74 @@
       selectedTime = "";
       submitBtn.disabled = true;
       submitBtn.textContent = label || "日時を選択してください";
+    }
+
+    async function loadBookings() {
+      const box = document.getElementById("bookingsList");
+      if (!currentUserId) {
+        box.innerHTML = '<div class="status">公式LINEから開くと、予約の確認ができます</div>';
+        return;
+      }
+      box.innerHTML = '<div class="status">予約を確認しています...</div>';
+      try {
+        const response = await fetch(`${GAS_URL}?action=bookings&userId=${encodeURIComponent(currentUserId)}`);
+        const data = await response.json();
+        const bookings = data.bookings || [];
+        if (!bookings.length) {
+          box.innerHTML = '<div class="status">今後の予約はありません</div>';
+          return;
+        }
+        box.innerHTML = "";
+        box.classList.add("booking-list");
+        bookings.forEach((booking) => {
+          const row = document.createElement("div");
+          row.className = "booking";
+          const info = document.createElement("div");
+          const when = document.createElement("p");
+          when.className = "booking-when";
+          when.textContent = booking.when;
+          const note = document.createElement("p");
+          note.className = "booking-note";
+          note.textContent = "レッスン時間 20分";
+          info.appendChild(when);
+          info.appendChild(note);
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "cancel-btn";
+          btn.textContent = "取り消す";
+          btn.addEventListener("click", () => cancelReservation(booking.eventId, booking.when));
+          row.appendChild(info);
+          row.appendChild(btn);
+          box.appendChild(row);
+        });
+      } catch (error) {
+        box.innerHTML = '<div class="status is-error">予約の取得に失敗しました。しばらくして再度お試しください。</div>';
+      }
+    }
+
+    async function cancelReservation(eventId, when) {
+      if (!currentUserId) {
+        alert("公式LINEの予約メニューから開いてください。");
+        return;
+      }
+      if (!window.confirm(when + " の予約を取り消しますか？")) return;
+      try {
+        const response = await fetch(GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "cancel",
+            userId: currentUserId,
+            eventId: eventId
+          })
+        });
+        const result = await response.json();
+        alert(result.message || (result.success ? "取り消しました" : "取り消せませんでした"));
+        await loadBookings();
+        await loadTimeSlots();
+      } catch (error) {
+        alert("通信エラーが発生しました");
+      }
     }
 
     async function loadTimeSlots() {
@@ -432,6 +554,8 @@
         if (result.success) {
           document.getElementById("modalMessage").textContent = result.message;
           document.getElementById("modal").classList.add("is-open");
+          loadBookings();
+          loadTimeSlots();
         } else {
           alert(result.message || "予約できませんでした");
           loadTimeSlots();
@@ -450,12 +574,9 @@
       dateSelect.addEventListener("change", loadTimeSlots);
       document.getElementById("submitBtn").addEventListener("click", submitReservation);
       document.getElementById("closeModal").addEventListener("click", () => {
-        if (inLine && window.liff && liff.isInClient()) {
-          liff.closeWindow();
-        } else {
-          document.getElementById("modal").classList.remove("is-open");
-          loadTimeSlots();
-        }
+        document.getElementById("modal").classList.remove("is-open");
+        loadBookings();
+        loadTimeSlots();
       });
 
       loadTimeSlots();
@@ -469,6 +590,7 @@
         if (liff.isLoggedIn()) {
           const profile = await liff.getProfile();
           setUser(profile.displayName, profile.userId);
+          loadBookings();
         } else if (liff.isInClient()) {
           liff.login();
           return;
