@@ -273,22 +273,26 @@ function onEdit(e) {
 }
 
 function listBookings_(userId) {
-  var now = new Date();
-  var to = parseTokyoDate_(tokyoPlusDays_(120));
-  var bookings = [];
+    var now = new Date();
+    var from = new Date(now.getTime() - DURATION_MINUTES * 60 * 1000);
+    var to = parseTokyoDate_(tokyoPlusDays_(120));
+    var bookings = [];
 
-  getCalendar_().getEvents(now, to).forEach(function (event) {
-    if (!isOurBooking_(event)) return;
-    var desc = event.getDescription() || '';
-    if (valueOf_(desc, 'LINE_USER_ID') !== userId) return;
-    bookings.push({
-      eventId: event.getId(),
-      when: formatLessonWhen_(event.getStartTime()),
-      date: tokyoDateString_(event.getStartTime()),
-      time: Utilities.formatDate(event.getStartTime(), TZ, 'HH:mm'),
-      zoom: ZOOM_URL
+    getCalendar_().getEvents(from, to).forEach(function (event) {
+      if (!isOurBooking_(event)) return;
+      if (event.getEndTime().getTime() <= now.getTime()) return;
+      var desc = event.getDescription() || '';
+      if (valueOf_(desc, 'LINE_USER_ID') !== userId) return;
+      bookings.push({
+        eventId: event.getId(),
+        when: formatLessonWhen_(event.getStartTime()),
+        date: tokyoDateString_(event.getStartTime()),
+        time: Utilities.formatDate(event.getStartTime(), TZ, 'HH:mm'),
+        startMs: event.getStartTime().getTime(),
+        endMs: event.getEndTime().getTime(),
+        zoom: ZOOM_URL
+      });
     });
-  });
 
   bookings.sort(function (a, b) {
     if (a.date !== b.date) return a.date < b.date ? -1 : 1;

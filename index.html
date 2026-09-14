@@ -123,6 +123,28 @@
       overflow: hidden;
     }
 
+    .board {
+      margin-top: 16px;
+      border: 1px solid var(--kepty-mid-orange);
+      border-radius: 20px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .board-block {
+      padding: 16px;
+    }
+
+    .board-block.is-now {
+      background: linear-gradient(180deg, var(--kepty-light-orange) 0%, #fff 78%);
+    }
+
+    .board-block.is-later {
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .board-block h2,
     .panel label,
     .panel h2 {
       display: block;
@@ -131,6 +153,35 @@
       font-weight: 800;
       letter-spacing: 0.06em;
       color: var(--kepty-orange);
+    }
+
+    .board-block h2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      letter-spacing: 0.04em;
+    }
+
+    .board-mark {
+      width: 8px;
+      height: 8px;
+      min-width: 8px;
+      border-radius: 50%;
+      background: var(--kepty-orange);
+    }
+
+    .board-block.is-later .board-mark {
+      background: transparent;
+      border: 2px solid var(--kepty-orange);
+    }
+
+    .new-booking-label {
+      margin: 22px 4px 0;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      color: var(--muted);
     }
 
     #dateSelect {
@@ -216,11 +267,37 @@
       background: var(--kepty-light-orange);
     }
 
+    .booking.is-current {
+      padding: 16px;
+      background: linear-gradient(180deg, #fff 0%, var(--kepty-light-orange) 100%);
+      border-width: 1.5px;
+    }
+
+    .booking-badge {
+      display: inline-block;
+      margin-bottom: 6px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: var(--kepty-orange);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+    }
+
+    .booking-badge.is-live {
+      background: var(--kepty-orange-deep);
+    }
+
     .booking-when {
       margin: 0;
       font-size: 15px;
       font-weight: 800;
       line-height: 1.4;
+    }
+
+    .booking.is-current .booking-when {
+      font-size: 18px;
     }
 
     .booking-note {
@@ -241,8 +318,24 @@
       cursor: pointer;
     }
 
-    #bookingsList .status {
+    #currentBookings .status,
+    #upcomingBookings .status {
       padding: 12px 4px;
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .modal-actions button {
+      flex: 1;
+    }
+
+    .modal-card button.is-ghost {
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--line);
     }
 
     .footer {
@@ -306,6 +399,7 @@
     .modal-card h3 {
       margin: 0 0 8px;
       font-size: 18px;
+      line-height: 1.45;
     }
 
     .modal-card p {
@@ -314,6 +408,14 @@
       line-height: 1.7;
       color: var(--muted);
       white-space: pre-line;
+    }
+
+    .modal-card p:empty {
+      display: none;
+    }
+
+    .modal-icon[hidden] {
+      display: none;
     }
 
     .modal-card button {
@@ -346,13 +448,22 @@
         </div>
       </section>
 
-      <section class="panel" aria-label="予約の確認">
-        <h2>ご予約の確認</h2>
-        <div id="bookingsList">
-          <div class="status">公式LINEから開くと、予約の確認ができます</div>
+      <section class="board" aria-label="ご予約状況">
+        <div class="board-block is-now">
+          <h2><span class="board-mark" aria-hidden="true"></span>現在のご予約状況</h2>
+          <div id="currentBookings">
+            <div class="status">公式LINEから開くと、予約の確認ができます</div>
+          </div>
+        </div>
+        <div class="board-block is-later">
+          <h2><span class="board-mark" aria-hidden="true"></span>今後のご予約</h2>
+          <div id="upcomingBookings">
+            <div class="status">公式LINEから開くと表示されます</div>
+          </div>
         </div>
       </section>
 
+      <p class="new-booking-label">新規予約</p>
       <section class="panel">
         <label for="dateSelect">1. 日付</label>
         <input type="date" id="dateSelect">
@@ -373,10 +484,13 @@
 
   <div class="modal" id="modal">
     <div class="modal-card">
-      <div class="modal-icon">✓</div>
-      <h3>予約が完了しました</h3>
+      <div class="modal-icon" id="modalIcon">✓</div>
+      <h3 id="modalTitle">✅ 予約を完了しました。</h3>
       <p id="modalMessage"></p>
-      <button type="button" id="closeModal">画面を閉じる</button>
+      <div class="modal-actions">
+        <button type="button" class="is-ghost" id="modalSecondary" hidden>もどる</button>
+        <button type="button" id="modalPrimary">閉じる</button>
+      </div>
     </div>
   </div>
 
@@ -388,6 +502,8 @@
     let currentUserName = "ゲスト";
     let selectedTime = "";
     let inLine = false;
+    let pendingCancel = null;
+    let modalPrimaryAction = null;
 
     function tokyoPlusDays(days) {
       const parts = new Intl.DateTimeFormat("en-CA", {
@@ -416,55 +532,134 @@
       submitBtn.textContent = label || "日時を選択してください";
     }
 
-    async function loadBookings() {
-      const box = document.getElementById("bookingsList");
-      if (!currentUserId) {
-        box.innerHTML = '<div class="status">公式LINEから開くと、予約の確認ができます</div>';
+    function openModal(options) {
+      const icon = document.getElementById("modalIcon");
+      icon.hidden = Boolean(options.hideIcon);
+      icon.textContent = options.icon || "✓";
+      document.getElementById("modalTitle").textContent = options.title;
+      document.getElementById("modalMessage").textContent = options.message || "";
+      const primary = document.getElementById("modalPrimary");
+      primary.disabled = false;
+      primary.textContent = options.primary || "閉じる";
+      const secondary = document.getElementById("modalSecondary");
+      if (options.secondary) {
+        secondary.hidden = false;
+        secondary.textContent = options.secondary;
+      } else {
+        secondary.hidden = true;
+      }
+      modalPrimaryAction = options.onPrimary || closeModal;
+      document.getElementById("modal").classList.add("is-open");
+    }
+
+    function closeModal() {
+      document.getElementById("modal").classList.remove("is-open");
+      pendingCancel = null;
+      modalPrimaryAction = null;
+    }
+
+    function guestStatus() {
+      return '<div class="status">公式LINEから開くと、予約の確認ができます</div>';
+    }
+
+    function renderBookingCard(booking, options) {
+      const row = document.createElement("div");
+      row.className = options.current ? "booking is-current" : "booking";
+      const info = document.createElement("div");
+      if (options.badge) {
+        const badge = document.createElement("span");
+        badge.className = options.live ? "booking-badge is-live" : "booking-badge";
+        badge.textContent = options.badge;
+        info.appendChild(badge);
+      }
+      const when = document.createElement("p");
+      when.className = "booking-when";
+      when.textContent = booking.when;
+      const note = document.createElement("p");
+      note.className = "booking-note";
+      note.textContent = "レッスン時間 20分";
+      info.appendChild(when);
+      info.appendChild(note);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cancel-btn";
+      btn.textContent = "取り消す";
+      btn.addEventListener("click", () => askCancel(booking));
+      row.appendChild(info);
+      row.appendChild(btn);
+      return row;
+    }
+
+    function fillBox(box, nodes, emptyText) {
+      box.innerHTML = "";
+      box.classList.add("booking-list");
+      if (!nodes.length) {
+        box.innerHTML = '<div class="status">' + emptyText + "</div>";
         return;
       }
-      box.innerHTML = '<div class="status">予約を確認しています...</div>';
+      nodes.forEach((node) => box.appendChild(node));
+    }
+
+    async function loadBookings() {
+      const currentBox = document.getElementById("currentBookings");
+      const upcomingBox = document.getElementById("upcomingBookings");
+      if (!currentUserId) {
+        currentBox.innerHTML = guestStatus();
+        upcomingBox.innerHTML = guestStatus();
+        return;
+      }
+      currentBox.innerHTML = '<div class="status">予約を確認しています...</div>';
+      upcomingBox.innerHTML = '<div class="status">予約を確認しています...</div>';
       try {
         const response = await fetch(`${GAS_URL}?action=bookings&userId=${encodeURIComponent(currentUserId)}`);
         const data = await response.json();
         const bookings = data.bookings || [];
-        if (!bookings.length) {
-          box.innerHTML = '<div class="status">今後の予約はありません</div>';
-          return;
+        const now = Date.now();
+        const live = bookings.find((booking) => booking.startMs <= now && now < booking.endMs);
+        const future = bookings.filter((booking) => booking.startMs > now);
+        const current = live || future[0] || null;
+        const later = live ? future : future.slice(1);
+
+        if (!current) {
+          fillBox(currentBox, [], "現在の予約はありません");
+        } else {
+          fillBox(currentBox, [renderBookingCard(current, {
+            current: true,
+            live: Boolean(live),
+            badge: live ? "レッスン中" : "次回のレッスン"
+          })], "");
         }
-        box.innerHTML = "";
-        box.classList.add("booking-list");
-        bookings.forEach((booking) => {
-          const row = document.createElement("div");
-          row.className = "booking";
-          const info = document.createElement("div");
-          const when = document.createElement("p");
-          when.className = "booking-when";
-          when.textContent = booking.when;
-          const note = document.createElement("p");
-          note.className = "booking-note";
-          note.textContent = "レッスン時間 20分";
-          info.appendChild(when);
-          info.appendChild(note);
-          const btn = document.createElement("button");
-          btn.type = "button";
-          btn.className = "cancel-btn";
-          btn.textContent = "取り消す";
-          btn.addEventListener("click", () => cancelReservation(booking.eventId, booking.when));
-          row.appendChild(info);
-          row.appendChild(btn);
-          box.appendChild(row);
-        });
+        fillBox(upcomingBox, later.map((booking) => renderBookingCard(booking, {})), "今後の予約はありません");
       } catch (error) {
-        box.innerHTML = '<div class="status is-error">予約の取得に失敗しました。しばらくして再度お試しください。</div>';
+        currentBox.innerHTML = '<div class="status is-error">予約の取得に失敗しました。しばらくして再度お試しください。</div>';
+        upcomingBox.innerHTML = "";
       }
     }
 
-    async function cancelReservation(eventId, when) {
+    function askCancel(booking) {
       if (!currentUserId) {
-        alert("公式LINEの予約メニューから開いてください。");
+        openModal({ title: "公式LINEの予約メニューから開いてください。", icon: "!", primary: "閉じる" });
         return;
       }
-      if (!window.confirm(when + " の予約を取り消しますか？")) return;
+      pendingCancel = booking;
+      openModal({
+        icon: "!",
+        title: "この予約を取り消しますか？",
+        message: booking.when,
+        primary: "取り消す",
+        secondary: "もどる",
+        onPrimary: confirmCancel
+      });
+    }
+
+    async function confirmCancel() {
+      const booking = pendingCancel;
+      if (!booking) {
+        closeModal();
+        return;
+      }
+      document.getElementById("modalPrimary").textContent = "処理中...";
+      document.getElementById("modalPrimary").disabled = true;
       try {
         const response = await fetch(GAS_URL, {
           method: "POST",
@@ -472,15 +667,40 @@
           body: JSON.stringify({
             action: "cancel",
             userId: currentUserId,
-            eventId: eventId
+            eventId: booking.eventId
           })
         });
         const result = await response.json();
-        alert(result.message || (result.success ? "取り消しました" : "取り消せませんでした"));
+        document.getElementById("modalPrimary").disabled = false;
+        if (result.success) {
+          openModal({
+            icon: "✓",
+            title: "予約を取り消しました。",
+            primary: "閉じる",
+            onPrimary: () => {
+              closeModal();
+              loadBookings();
+              loadTimeSlots();
+            }
+          });
+        } else {
+          openModal({
+            icon: "!",
+            title: "取り消せませんでした。",
+            message: "時間をおいて、もう一度お試しください。",
+            primary: "閉じる"
+          });
+        }
         await loadBookings();
         await loadTimeSlots();
       } catch (error) {
-        alert("通信エラーが発生しました");
+        document.getElementById("modalPrimary").disabled = false;
+        openModal({
+          icon: "!",
+          title: "取り消せませんでした。",
+          message: "時間をおいて、もう一度お試しください。",
+          primary: "閉じる"
+        });
       }
     }
 
@@ -533,7 +753,7 @@
     async function submitReservation() {
       const submitBtn = document.getElementById("submitBtn");
       if (!currentUserId) {
-        alert("公式LINEの予約メニューから開いてください。");
+        openModal({ title: "公式LINEの予約メニューから開いてください。", icon: "!", primary: "閉じる" });
         return;
       }
       submitBtn.textContent = "予約処理中...";
@@ -552,16 +772,34 @@
         });
         const result = await response.json();
         if (result.success) {
-          document.getElementById("modalMessage").textContent = result.message;
-          document.getElementById("modal").classList.add("is-open");
+          openModal({
+            hideIcon: true,
+            title: "✅ 予約を完了しました。",
+            primary: "閉じる",
+            onPrimary: () => {
+              closeModal();
+              loadBookings();
+              loadTimeSlots();
+            }
+          });
           loadBookings();
           loadTimeSlots();
         } else {
-          alert(result.message || "予約できませんでした");
+          openModal({
+            icon: "!",
+            title: "予約できませんでした。",
+            message: "別の日時を選ぶか、時間をおいてお試しください。",
+            primary: "閉じる"
+          });
           loadTimeSlots();
         }
       } catch (error) {
-        alert("通信エラーが発生しました");
+        openModal({
+          icon: "!",
+          title: "予約できませんでした。",
+          message: "時間をおいて、もう一度お試しください。",
+          primary: "閉じる"
+        });
         submitBtn.disabled = false;
         submitBtn.textContent = `${selectedTime} で予約する`;
       }
@@ -573,11 +811,11 @@
       dateSelect.value = tokyoPlusDays(0);
       dateSelect.addEventListener("change", loadTimeSlots);
       document.getElementById("submitBtn").addEventListener("click", submitReservation);
-      document.getElementById("closeModal").addEventListener("click", () => {
-        document.getElementById("modal").classList.remove("is-open");
-        loadBookings();
-        loadTimeSlots();
+      document.getElementById("modalPrimary").addEventListener("click", () => {
+        if (modalPrimaryAction) modalPrimaryAction();
+        else closeModal();
       });
+      document.getElementById("modalSecondary").addEventListener("click", closeModal);
 
       loadTimeSlots();
 
@@ -596,9 +834,11 @@
           return;
         } else {
           setUser("ゲスト", "");
+          loadBookings();
         }
       } catch (err) {
         setUser("ゲスト", "");
+        loadBookings();
       }
     });
   </script>
