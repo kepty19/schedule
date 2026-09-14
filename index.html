@@ -176,12 +176,17 @@
       border: 2px solid var(--kepty-orange);
     }
 
-    .new-booking-label {
-      margin: 22px 4px 0;
+    .field-label {
+      display: block;
+      margin: 14px 0 8px;
       font-size: 12px;
       font-weight: 800;
-      letter-spacing: 0.08em;
-      color: var(--muted);
+      letter-spacing: 0.06em;
+      color: var(--kepty-orange);
+    }
+
+    .board-block h2 + .field-label {
+      margin-top: 2px;
     }
 
     #dateSelect {
@@ -319,7 +324,7 @@
     }
 
     #currentBookings .status,
-    #upcomingBookings .status {
+    #timeSlots .status {
       padding: 12px 4px;
     }
 
@@ -457,22 +462,12 @@
         </div>
         <div class="board-block is-later">
           <h2><span class="board-mark" aria-hidden="true"></span>今後のご予約</h2>
-          <div id="upcomingBookings">
-            <div class="status">公式LINEから開くと表示されます</div>
+          <label class="field-label" for="dateSelect">日付</label>
+          <input type="date" id="dateSelect">
+          <p class="field-label">開始時刻（レッスン時間20分）</p>
+          <div id="timeSlots">
+            <div class="status">日付を選ぶと空き枠を表示します</div>
           </div>
-        </div>
-      </section>
-
-      <p class="new-booking-label">新規予約</p>
-      <section class="panel">
-        <label for="dateSelect">1. 日付</label>
-        <input type="date" id="dateSelect">
-      </section>
-
-      <section class="panel">
-        <h2>2. 開始時刻（レッスン時間20分）</h2>
-        <div id="timeSlots">
-          <div class="status">日付を選ぶと空き枠を表示します</div>
         </div>
       </section>
     </main>
@@ -602,37 +597,27 @@
 
     async function loadBookings() {
       const currentBox = document.getElementById("currentBookings");
-      const upcomingBox = document.getElementById("upcomingBookings");
       if (!currentUserId) {
         currentBox.innerHTML = guestStatus();
-        upcomingBox.innerHTML = guestStatus();
         return;
       }
       currentBox.innerHTML = '<div class="status">予約を確認しています...</div>';
-      upcomingBox.innerHTML = '<div class="status">予約を確認しています...</div>';
       try {
         const response = await fetch(`${GAS_URL}?action=bookings&userId=${encodeURIComponent(currentUserId)}`);
         const data = await response.json();
         const bookings = data.bookings || [];
         const now = Date.now();
-        const live = bookings.find((booking) => booking.startMs <= now && now < booking.endMs);
-        const future = bookings.filter((booking) => booking.startMs > now);
-        const current = live || future[0] || null;
-        const later = live ? future : future.slice(1);
-
-        if (!current) {
-          fillBox(currentBox, [], "現在の予約はありません");
-        } else {
-          fillBox(currentBox, [renderBookingCard(current, {
-            current: true,
-            live: Boolean(live),
-            badge: live ? "レッスン中" : "次回のレッスン"
-          })], "");
-        }
-        fillBox(upcomingBox, later.map((booking) => renderBookingCard(booking, {})), "今後の予約はありません");
+        const cards = bookings.map((booking, index) => {
+          const live = booking.startMs <= now && now < booking.endMs;
+          return renderBookingCard(booking, {
+            current: index === 0,
+            live,
+            badge: live ? "レッスン中" : (index === 0 ? "次回のレッスン" : "")
+          });
+        });
+        fillBox(currentBox, cards, "現在の予約はありません");
       } catch (error) {
         currentBox.innerHTML = '<div class="status is-error">予約の取得に失敗しました。しばらくして再度お試しください。</div>';
-        upcomingBox.innerHTML = "";
       }
     }
 
