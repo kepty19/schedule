@@ -27,7 +27,8 @@ var SPREADSHEET_ID = '1OLiHIs7HjtlSxE9j3ETGhlE8efjiayomMpmYb-376U0';
 var SHEET_NAME = 'calendar';
 var AVAILABILITY_TITLE = 'Online Lesson Booking Slot';
 var AVAILABILITY_TAG = 'SHEET_AVAILABILITY:true';
-var ZOOM_URL = 'https://us06web.zoom.us/j/6038625058?pwd=WJSqJnqcblNawxi1lPtpVXtzK8r8OL.1';
+var BOOKING_TITLE_PREFIX = 'Lesson Booking';
+var ZOOM_URL = 'https://us05web.zoom.us/j/9807363516?pwd=ER4SpeX49wkrWSZYDKjNZGT0oic1PL.1';
 var WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'];
 
 function doGet(e) {
@@ -52,7 +53,7 @@ function doPost(e) {
     var data = JSON.parse((e.postData && e.postData.contents) || '{}');
     var action = String(data.action || 'book').trim();
     var userId = String(data.userId || '').trim();
-    var userName = String(data.userName || 'ゲスト').trim();
+    var userName = String(data.userName || 'Guest').trim();
 
     if (!userId || userId === 'GUEST') {
       return json_({ success: false, message: '公式LINEの予約メニューから開いてください。' });
@@ -76,7 +77,7 @@ function doPost(e) {
     var start = slotStart_(date, time);
     var end = new Date(start.getTime() + DURATION_MINUTES * 60 * 1000);
     var calendar = getCalendar_();
-    var event = calendar.createEvent('レッスン予約（' + userName + '）', start, end, {
+    var event = calendar.createEvent(bookingEventTitle_(userName), start, end, {
       description: bookingDescription_(userId, userName),
       location: ZOOM_URL
     });
@@ -378,7 +379,9 @@ function isSheetAvailability_(event) {
 function isOurBooking_(event) {
   var title = String(event.getTitle() || '');
   var desc = event.getDescription() || '';
-  return title.indexOf('レッスン予約') !== -1 || desc.indexOf('LINE_USER_ID:') !== -1;
+  return title.indexOf(BOOKING_TITLE_PREFIX) !== -1 ||
+    title.indexOf('レッスン予約') !== -1 ||
+    desc.indexOf('LINE_USER_ID:') !== -1;
 }
 
 function overlapsBusy_(start, end, busy) {
@@ -463,36 +466,53 @@ function formatLessonWhen_(date) {
     Utilities.formatDate(date, TZ, 'HH:mm') + '〜';
 }
 
-function bookingLineMessage_(start) {
+function calendarStudentName_(userName) {
+  var name = String(userName || '').trim();
+  if (!name || name === 'ゲスト') return 'Guest';
+  return name;
+}
+
+function bookingEventTitle_(userName) {
+  return BOOKING_TITLE_PREFIX + ' (' + calendarStudentName_(userName) + ')';
+}
+
+function lessonLineMessage_(start, intro, enterLine) {
   return [
-    'ご予約ありがとうございます。',
-    formatLessonWhen_(start),
+    intro,
+    '・' + formatLessonWhen_(start),
+    '・レッスン時間は約20分',
     '',
-    '当日は、下記リンクよりご入室ください。',
+    enterLine,
     ZOOM_URL,
     '',
-    'We look forward to seeing you✈️'
+    'Enjoy your lesson✈️'
   ].join('\n');
 }
 
+function bookingLineMessage_(start) {
+  return lessonLineMessage_(
+    start,
+    'ご予約ありがとうございます。',
+    '当日は、下記リンクよりご入室ください。'
+  );
+}
+
 function eveLineMessage_(start) {
-  return [
-    '明日、英会話レッスンの予約がございます。',
-    formatLessonWhen_(start),
-    '',
-    '下記リンクよりご入室ください。',
-    ZOOM_URL,
-    '',
-    'We look forward to seeing you🎁'
-  ].join('\n');
+  return lessonLineMessage_(
+    start,
+    'レッスン前日のリマインドです。',
+    '明日は、下記リンクよりご入室ください。'
+  );
 }
 
 function bookingDescription_(userId, userName) {
   return [
+    'Online lesson booking',
+    'Student: ' + calendarStudentName_(userName),
     'LINE_USER_ID:' + userId,
     'LINE_DISPLAY_NAME:' + userName,
     'PREV_DAY_REMINDER_SENT:false',
-    'Meeting Link',
+    'Meeting link:',
     ZOOM_URL
   ].join('\n');
 }
