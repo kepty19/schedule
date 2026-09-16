@@ -27,6 +27,7 @@ var SPREADSHEET_ID = '1OLiHIs7HjtlSxE9j3ETGhlE8efjiayomMpmYb-376U0';
 var SHEET_NAME = 'calendar';
 var AVAILABILITY_TITLE = 'Online Lesson Booking Slot';
 var AVAILABILITY_TAG = 'SHEET_AVAILABILITY:true';
+var AVAILABILITY_COLOR = CalendarApp.EventColor.PALE_BLUE;
 var BOOKING_TITLE_PREFIX = 'Lesson Booking';
 var ZOOM_URL = 'https://us05web.zoom.us/j/9807363516?pwd=ER4SpeX49wkrWSZYDKjNZGT0oic1PL.1';
 var WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'];
@@ -174,10 +175,27 @@ function loadAvailabilityDays_() {
       });
     }
 
-    days[dateStr] = windows;
+    days[dateStr] = mergeWindows_(windows);
   }
 
   return days;
+}
+
+function mergeWindows_(windows) {
+  if (!windows.length) return [];
+  var sorted = windows.slice().sort(function (a, b) {
+    return a.start.getTime() - b.start.getTime();
+  });
+  var merged = [{ start: sorted[0].start, end: sorted[0].end }];
+  for (var i = 1; i < sorted.length; i++) {
+    var last = merged[merged.length - 1];
+    if (sorted[i].start.getTime() <= last.end.getTime() + 1000) {
+      if (sorted[i].end.getTime() > last.end.getTime()) last.end = sorted[i].end;
+    } else {
+      merged.push({ start: sorted[i].start, end: sorted[i].end });
+    }
+  }
+  return merged;
 }
 
 function slotsFromWindows_(windows, busy) {
@@ -243,6 +261,7 @@ function syncAvailabilityToCalendar() {
         Utilities.formatDate(event.getEndTime(), TZ, 'HH:mm');
       if (desired[key]) {
         kept[key] = true;
+        event.setColor(AVAILABILITY_COLOR);
       } else {
         event.deleteEvent();
       }
@@ -254,7 +273,7 @@ function syncAvailabilityToCalendar() {
       var event = calendar.createEvent(AVAILABILITY_TITLE, win.start, win.end, {
         description: AVAILABILITY_TAG
       });
-      event.setColor(CalendarApp.EventColor.PALE_BLUE);
+      event.setColor(AVAILABILITY_COLOR);
     });
   } finally {
     lock.releaseLock();
