@@ -29,7 +29,7 @@ var AVAILABILITY_TITLE = 'Online Lesson Booking Slot';
 var AVAILABILITY_TAG = 'SHEET_AVAILABILITY:true';
 var AVAILABILITY_COLOR = CalendarApp.EventColor.PALE_BLUE;
 var BOOKING_TITLE_PREFIX = 'Lesson Booking';
-var ZOOM_URL = 'https://us05web.zoom.us/j/9807363516?pwd=ER4SpeX49wkrWSZYDKjNZGT0oic1PL.1';
+var ZOOM_URL = 'https://us05web.zoom.us/j/82772210913?pwd=ZuUZhN09KfLOz2oyZuafZZEH5GdaJI.1';
 var WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'];
 
 function doGet(e) {
