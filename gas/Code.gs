@@ -1,42 +1,66 @@
 /**
- * 無料相談の予約バックエンド
+ * Kepty English 予約バックエンド
  *
- * 保護者が送った希望内容を、指定スプレッドシートの先頭シート（gid=0）へ追記し、
- * NOTIFY_LINE_USER_ID にだけ LINE で通知する。
- * Googleカレンダーは使わない。
+ * 上流はスプレッドシート「calendar」。
+ * 2行で1日。時刻の下のチェックがONなら、その時刻〜右隣の時刻の1時間が稼働。
+ * 予約枠はその1時間を20分×3本に割る（例: 18時チェック → 18:00 / 18:20 / 18:40）。
+ * 予約ローデータは同ブックの「data」「raw」シート A〜D 列へ書く
+ * （A=LINE_UserID, B=date, C=time, D=remind message）。
+ * 既存のカレンダー予約を流し込むときは、エディタで backfillExistingBookingsToRaw を実行する。
  *
  * デプロイ:
- * 1. このコードを、対象スプレッドシートを編集できる Google アカウントの Apps Script に貼る
+ * 1. このコードを、カレンダーとスプシの両方に権限がある Google アカウントの Apps Script に貼る
  * 2. プロジェクトの設定 → スクリプト プロパティ
  *    - LINE_CHANNEL_ACCESS_TOKEN … Messaging API のチャネルアクセストークン
+ *    - CALENDAR_ID … 省略時はデフォルトカレンダー
  *    - SPREADSHEET_ID … 省略時は下の定数
  * 3. デプロイ → 新しいデプロイ → ウェブアプリ
  *    - 次のユーザーとして実行: 自分
  *    - アクセスできるユーザー: 全員
- * 4. 発行されたウェブアプリ URL を index.html の GAS_URL に入れる
- *
- * シートが空のときだけ、1行目に見出しを書く。
- * A 送信日時 / B 記入者氏名 / C 所属カテゴリー / D 希望日時1 / E 希望日時2 / F 希望日時3 / G 事前の質問・相談・共有事項
+ * 4. トリガー:
+ *    - checkAndSendReminders … 10分おき
+ *      （予約した本人へは前日21時のLINE案内のみ。1時間前は本人へ送らない）
+ *      （STAFF_LINE_USER_IDS へは、前日21時と開始およそ1時間前も送る）
+ *    - syncAvailabilityToCalendar … 1分おき（チェックの有無を空き枠へ反映。外した日も消す）
  */
 
 var TZ = 'Asia/Tokyo';
-var SPREADSHEET_ID = '1lD7nEz-AuRXTzSql2fH6FIGyVJxt2JcIXp-kRFc7-9c';
-var NOTIFY_LINE_USER_ID = 'U9de56864ced4187e6270d26ece292bcd';
-var CATEGORIES = ['U-18', 'U-15', 'U-12', 'U-10', 'その他'];
-var HORIZON_DAYS = 90;
-var HEADERS = [
-  '送信日時',
-  '記入者氏名',
-  '所属カテゴリー',
-  '希望日時1',
-  '希望日時2',
-  '希望日時3',
-  '事前の質問・相談・共有事項'
+var SLOT_MINUTES = 20;
+var DURATION_MINUTES = 20;
+var LEAD_MINUTES = 60;
+var SPREADSHEET_ID = '1OLiHIs7HjtlSxE9j3ETGhlE8efjiayomMpmYb-376U0';
+var SHEET_NAME = 'calendar';
+var DATA_SHEET_NAME = 'data';
+var RAW_SHEET_NAME = 'raw';
+var DATA_HEADERS = ['LINE_UserID', 'date', 'time', 'remind message'];
+var AVAILABILITY_TITLE = 'Online Lesson Booking Slot';
+var AVAILABILITY_TAG = 'SHEET_AVAILABILITY:true';
+var AVAILABILITY_COLOR = CalendarApp.EventColor.PALE_BLUE;
+var BOOKING_TITLE_PREFIX = 'Lesson Booking';
+var STAFF_LINE_USER_IDS = [
+  'Ud0fefb32063023e68af8a6be50201e19',
+  'U9de56864ced4187e6270d26ece292bcd'
 ];
+var LESSON_TYPES = {
+  guided: '専属講師が主導する授業形式のレッスン',
+  freetalk: '専属講師と自由に会話するフリートークレッスン'
+};
+var ZOOM_URL = 'https://us05web.zoom.us/j/82772210913?pwd=ZuUZhN09KfLOz2oyZuafZZEH5GdaJI.1';
 var WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'];
 
-function doGet() {
-  return json_({ ok: true, service: 'free-consultation' });
+function doGet(e) {
+  try {
+    var action = (e && e.parameter && e.parameter.action) || 'slots';
+    if (action === 'bookings') {
+      var userId = String((e.parameter && e.parameter.userId) || '').trim();
+      if (!userId || userId === 'GUEST') return json_({ ok: true, bookings: [] });
+      return json_({ ok: true, bookings: listBookings_(userId) });
+    }
+    var date = (e && e.parameter && e.parameter.date) || tokyoDateString_(new Date());
+    return json_({ ok: true, slots: buildSlots_(date) });
+  } catch (err) {
+    return json_({ ok: false, error: String(err) });
+  }
 }
 
 function doPost(e) {
@@ -44,131 +68,636 @@ function doPost(e) {
   lock.waitLock(15000);
   try {
     var data = JSON.parse((e.postData && e.postData.contents) || '{}');
-    var parsed = parseRequest_(data);
-    if (parsed.error) return json_({ success: false, message: parsed.error });
+    var action = String(data.action || 'book').trim();
+    var userId = String(data.userId || '').trim();
+    var userName = String(data.userName || 'Guest').trim();
 
-    appendRequest_(parsed);
-    notifyLine_(parsed);
+    if (!userId || userId === 'GUEST') {
+      return json_({ success: false, message: '公式LINEの予約メニューから開いてください。' });
+    }
+
+    if (action === 'cancel') {
+      return json_(cancelBooking_(userId, String(data.eventId || '').trim()));
+    }
+
+    var date = String(data.date || '').trim();
+    var time = String(data.time || '').trim();
+    var lessonType = String(data.lessonType || '').trim();
+    if (!date || !time) {
+      return json_({ success: false, message: '日時を選択してください。' });
+    }
+    if (!LESSON_TYPES[lessonType]) {
+      return json_({ success: false, message: 'レッスン形式を選択してください。' });
+    }
+
+    var slot = findSlot_(date, time);
+    if (!slot || !slot.available) {
+      return json_({ success: false, message: 'その枠はすでに埋まりました。別の日時を選んでください。' });
+    }
+
+    var start = slotStart_(date, time);
+    var end = new Date(start.getTime() + DURATION_MINUTES * 60 * 1000);
+    var calendar = getCalendar_();
+    var event = calendar.createEvent(bookingEventTitle_(userName), start, end, {
+      description: bookingDescription_(userId, userName, lessonType),
+      location: ZOOM_URL
+    });
+    event.setColor(CalendarApp.EventColor.ORANGE);
+
+    var confirmText = bookingLineMessage_(start);
+    sendLine_(userId, confirmText);
+    appendBookingRaw_(userId, date, time, eveLineMessage_(start));
+    var lessonNo = String(lessonNoFromRaw_(userId, date, time));
+    setDescFlag_(event, 'LESSON_NO', lessonNo);
+    sendLineToStaff_(staffBookingMessage_(calendarStudentName_(userName), lessonNo, start, lessonType));
 
     return json_({
       success: true,
-      message: '希望を送信しました。内容を確認のうえ、ご連絡します。'
+      message: confirmText,
+      eventId: event.getId()
     });
   } catch (err) {
-    return json_({ success: false, message: '送信できませんでした。時間をおいて、もう一度お試しください。' });
+    return json_({ success: false, message: '予約処理でエラーが発生しました。' });
   } finally {
     lock.releaseLock();
   }
 }
 
-function parseRequest_(data) {
-  var name = String(data.name || '').trim();
-  var category = String(data.category || '').trim();
-  var note = String(data.note || '').trim();
-  var preferences = data.preferences;
-
-  if (!name || name.length > 80) {
-    return { error: '記入者の氏名を入力してください。' };
-  }
-  if (CATEGORIES.indexOf(category) === -1) {
-    return { error: '選手の所属カテゴリーを選択してください。' };
-  }
-  if (note.length > 2000) {
-    return { error: '事前の質問・相談・共有事項は2000文字以内で入力してください。' };
-  }
-  if (!preferences || preferences.length !== 3) {
-    return { error: '希望日時を3つ選択してください。' };
-  }
-
-  var slots = [];
-  var seen = {};
-  for (var i = 0; i < preferences.length; i++) {
-    var slot = preferences[i] || {};
-    var date = String(slot.date || '').trim();
-    var time = String(slot.time || '').trim();
-    var reason = invalidSlotReason_(date, time, seen);
-    if (reason) return { error: reason };
-    seen[date + ' ' + time] = true;
-    slots.push({ date: date, time: time });
-  }
-
-  return {
-    name: name,
-    category: category,
-    note: note,
-    slots: slots
-  };
+function sendReminders() {
+  sendEveReminders_();
+  sendStaffHourReminders_();
 }
 
-function invalidSlotReason_(date, time, seen) {
-  if (!isValidYmd_(date) || allowedTimes_().indexOf(time) === -1) {
-    return '希望日時を選び直してください。';
-  }
-  if (seen[date + ' ' + time]) {
-    return '同じ日時が重複しています。別の日時を選んでください。';
+function checkAndSendReminders() {
+  sendEveReminders_();
+  sendStaffHourReminders_();
+}
+
+function sendEveReminders_() {
+  var now = new Date();
+  if (Number(Utilities.formatDate(now, TZ, 'H')) !== 21) return;
+
+  var tomorrow = tokyoPlusDays_(1);
+  var events = getCalendar_().getEvents(parseTokyoDate_(tomorrow), endOfDay_(parseTokyoDate_(tomorrow)));
+
+  events.forEach(function (event) {
+    if (!isOurBooking_(event)) return;
+    var desc = event.getDescription() || '';
+    var userId = valueOf_(desc, 'LINE_USER_ID');
+    var sent = valueOf_(desc, 'PREV_DAY_REMINDER_SENT');
+    if (!userId) return;
+    if (sent !== 'true') {
+      sendLine_(userId, eveLineMessage_(event.getStartTime()));
+      if (desc.indexOf('PREV_DAY_REMINDER_SENT:false') !== -1) {
+        event.setDescription(desc.replace('PREV_DAY_REMINDER_SENT:false', 'PREV_DAY_REMINDER_SENT:true'));
+      } else if (desc.indexOf('PREV_DAY_REMINDER_SENT:') === -1) {
+        event.setDescription(desc + '\nPREV_DAY_REMINDER_SENT:true');
+      }
+      desc = event.getDescription() || '';
+    }
+    notifyStaffEve_(event, desc);
+  });
+}
+
+function notifyStaffEve_(event, desc) {
+  if (valueOf_(desc, 'STAFF_EVE_SENT') === 'true') return;
+  var userId = valueOf_(desc, 'LINE_USER_ID');
+  if (!userId) return;
+  var start = event.getStartTime();
+  var name = calendarStudentName_(valueOf_(desc, 'LINE_DISPLAY_NAME'));
+  var lessonNo = lessonNumber_(event);
+  sendLineToStaff_(staffEveMessage_(name, lessonNo, start, valueOf_(desc, 'LESSON_TYPE')));
+  setDescFlag_(event, 'STAFF_EVE_SENT', 'true');
+}
+
+function sendStaffHourReminders_() {
+  var now = new Date();
+  // getEvents の終端は含まないので、開始ちょうど60分前の予定も拾う。
+  var horizon = new Date(now.getTime() + 61 * 60 * 1000);
+  getCalendar_().getEvents(now, horizon).forEach(function (event) {
+    if (!isOurBooking_(event)) return;
+    var start = event.getStartTime();
+    var remaining = start.getTime() - now.getTime();
+    if (remaining <= 0 || remaining > 60 * 60 * 1000) return;
+    var desc = event.getDescription() || '';
+    if (valueOf_(desc, 'STAFF_HOUR_SENT') === 'true') return;
+    if (!valueOf_(desc, 'LINE_USER_ID')) return;
+    var name = calendarStudentName_(valueOf_(desc, 'LINE_DISPLAY_NAME'));
+    var lessonNo = lessonNumber_(event);
+    sendLineToStaff_(staffHourMessage_(name, lessonNo, start, valueOf_(desc, 'LESSON_TYPE')));
+    setDescFlag_(event, 'STAFF_HOUR_SENT', 'true');
+  });
+}
+
+function buildSlots_(date) {
+  if (date < tokyoDateString_(new Date())) return [];
+
+  var windows = windowsForDate_(date);
+  if (!windows.length) return [];
+
+  var busy = [];
+  getCalendar_().getEvents(parseTokyoDate_(date), endOfDay_(parseTokyoDate_(date))).forEach(function (event) {
+    if (isSheetAvailability_(event)) return;
+    if (isOurBooking_(event)) {
+      busy.push({ start: event.getStartTime(), end: event.getEndTime() });
+    }
+  });
+
+  return slotsFromWindows_(windows, busy);
+}
+
+function windowsForDate_(date) {
+  var days = loadAvailabilityDays_();
+  return days[date] || [];
+}
+
+function loadAvailabilityDays_() {
+  var values = getCalendarSheet_().getDataRange().getValues();
+  var days = {};
+
+  for (var i = 0; i < values.length - 1; i += 2) {
+    var dateStr = sheetDateToYmd_(values[i][0]);
+    if (!dateStr) continue;
+
+    var timeRow = values[i];
+    var checkRow = values[i + 1] || [];
+    var windows = [];
+
+    for (var c = 1; c < timeRow.length; c++) {
+      if (!isChecked_(checkRow[c])) continue;
+      var startHm = sheetTimeToHm_(timeRow[c]);
+      var endHm = sheetTimeToHm_(timeRow[c + 1]);
+      if (!startHm || !endHm) continue;
+      windows.push({
+        start: slotStart_(dateStr, startHm),
+        end: slotStart_(dateStr, endHm)
+      });
+    }
+
+    days[dateStr] = mergeWindows_(windows);
   }
 
-  var start = slotStart_(date, time);
+  return days;
+}
+
+function mergeWindows_(windows) {
+  if (!windows.length) return [];
+  var sorted = windows.slice().sort(function (a, b) {
+    return a.start.getTime() - b.start.getTime();
+  });
+  var merged = [{ start: sorted[0].start, end: sorted[0].end }];
+  for (var i = 1; i < sorted.length; i++) {
+    var last = merged[merged.length - 1];
+    if (sorted[i].start.getTime() <= last.end.getTime() + 1000) {
+      if (sorted[i].end.getTime() > last.end.getTime()) last.end = sorted[i].end;
+    } else {
+      merged.push({ start: sorted[i].start, end: sorted[i].end });
+    }
+  }
+  return merged;
+}
+
+function slotsFromWindows_(windows, busy) {
   var now = new Date();
-  if (start.getTime() <= now.getTime()) {
-    return '過去の日時は選択できません。別の日時を選んでください。';
+  var latest = now.getTime() + LEAD_MINUTES * 60 * 1000;
+  var slots = [];
+  var seen = {};
+  var durationMs = DURATION_MINUTES * 60 * 1000;
+  var stepMs = SLOT_MINUTES * 60 * 1000;
+
+  windows.forEach(function (win) {
+    var cursor = win.start;
+    var endMs = win.end.getTime();
+    while (cursor.getTime() + durationMs <= endMs + 1000) {
+      var time = Utilities.formatDate(cursor, TZ, 'HH:mm');
+      if (!seen[time]) {
+        seen[time] = true;
+        var slotEnd = new Date(cursor.getTime() + durationMs);
+        if (cursor.getTime() >= latest && !overlapsBusy_(cursor, slotEnd, busy)) {
+          slots.push({ time: time, available: true });
+        }
+      }
+      cursor = new Date(cursor.getTime() + stepMs);
+    }
+  });
+
+  slots.sort(function (a, b) {
+    return a.time < b.time ? -1 : 1;
+  });
+  return slots;
+}
+
+function syncAvailabilityToCalendar() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) return;
+  try {
+    var days = loadAvailabilityDays_();
+    var today = tokyoDateString_(new Date());
+    var desired = {};
+    // チェックが無い日も読み取る。最後のチェック日で範囲を切ると、その後の空き枠が残る。
+    var latestDate = tokyoPlusDays_(180);
+
+    Object.keys(days).forEach(function (date) {
+      if (date < today) return;
+      if (date > latestDate) latestDate = date;
+      (days[date] || []).forEach(function (win) {
+        var key = date + '|' + Utilities.formatDate(win.start, TZ, 'HH:mm') + '|' + Utilities.formatDate(win.end, TZ, 'HH:mm');
+        desired[key] = win;
+      });
+    });
+
+    var calendar = getCalendar_();
+    var rangeStart = parseTokyoDate_(today);
+    var rangeEnd = endOfDay_(parseTokyoDate_(latestDate));
+    var existing = calendar.getEvents(rangeStart, rangeEnd);
+    var kept = {};
+
+    existing.forEach(function (event) {
+      if (!isSheetAvailability_(event)) return;
+      var key = tokyoDateString_(event.getStartTime()) + '|' +
+        Utilities.formatDate(event.getStartTime(), TZ, 'HH:mm') + '|' +
+        Utilities.formatDate(event.getEndTime(), TZ, 'HH:mm');
+      if (desired[key]) {
+        kept[key] = true;
+        event.setColor(AVAILABILITY_COLOR);
+      } else {
+        event.deleteEvent();
+      }
+    });
+
+    Object.keys(desired).forEach(function (key) {
+      if (kept[key]) return;
+      var win = desired[key];
+      var event = calendar.createEvent(AVAILABILITY_TITLE, win.start, win.end, {
+        description: AVAILABILITY_TAG
+      });
+      event.setColor(AVAILABILITY_COLOR);
+    });
+  } finally {
+    lock.releaseLock();
   }
-  if (date > tokyoPlusDays_(HORIZON_DAYS)) {
-    return '希望日時は' + HORIZON_DAYS + '日以内で選択してください。';
+}
+
+function onEdit(e) {
+  try {
+    if (!e || !e.range) {
+      syncAvailabilityToCalendar();
+      return;
+    }
+    var sheet = e.range.getSheet();
+    if (sheet.getName() !== SHEET_NAME) return;
+    syncAvailabilityToCalendar();
+  } catch (err) {}
+}
+
+function listBookings_(userId) {
+    var now = new Date();
+    var from = new Date(now.getTime() - DURATION_MINUTES * 60 * 1000);
+    var to = parseTokyoDate_(tokyoPlusDays_(120));
+    var bookings = [];
+
+    getCalendar_().getEvents(from, to).forEach(function (event) {
+      if (!isOurBooking_(event)) return;
+      if (event.getEndTime().getTime() <= now.getTime()) return;
+      var desc = event.getDescription() || '';
+      if (valueOf_(desc, 'LINE_USER_ID') !== userId) return;
+      bookings.push({
+        eventId: event.getId(),
+        when: formatLessonWhen_(event.getStartTime()),
+        date: tokyoDateString_(event.getStartTime()),
+        time: Utilities.formatDate(event.getStartTime(), TZ, 'HH:mm'),
+        startMs: event.getStartTime().getTime(),
+        endMs: event.getEndTime().getTime(),
+        zoom: ZOOM_URL
+      });
+    });
+
+  bookings.sort(function (a, b) {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1;
+    return a.time < b.time ? -1 : 1;
+  });
+  return bookings;
+}
+
+function cancelBooking_(userId, eventId) {
+  if (!eventId) return { success: false, message: '予約が見つかりません。' };
+
+  var event = findOwnedBooking_(userId, eventId);
+  if (!event) return { success: false, message: '予約が見つかりません。' };
+  if (event.getStartTime().getTime() < new Date().getTime()) {
+    return { success: false, message: '開始済みの予約は取り消せません。' };
   }
+
+  var start = event.getStartTime();
+  var when = formatLessonWhen_(start);
+  var date = tokyoDateString_(start);
+  var time = Utilities.formatDate(start, TZ, 'HH:mm');
+  event.deleteEvent();
+  removeBookingRaw_(userId, date, time);
+  sendLine_(userId, cancelLineMessage_(when));
+  return { success: true, message: when + ' の予約を取り消しました。' };
+}
+
+function findOwnedBooking_(userId, eventId) {
+  try {
+    var event = getCalendar_().getEventById(eventId);
+    if (event && valueOf_(event.getDescription() || '', 'LINE_USER_ID') === userId) return event;
+  } catch (err) {}
+
+  var bookings = listBookings_(userId);
+  for (var i = 0; i < bookings.length; i++) {
+    if (bookings[i].eventId === eventId) {
+      try {
+        var found = getCalendar_().getEventById(bookings[i].eventId);
+        if (found) return found;
+      } catch (err2) {}
+    }
+  }
+  return null;
+}
+
+function cancelLineMessage_(when) {
+  return [
+    'ご予約を取り消しました。',
+    when,
+    '',
+    'またのご予約をお待ちしています。'
+  ].join('\n');
+}
+
+function findSlot_(date, time) {
+  var slots = buildSlots_(date);
+  for (var i = 0; i < slots.length; i++) {
+    if (slots[i].time === time) return slots[i];
+  }
+  return null;
+}
+
+function getSpreadsheet_() {
+  var id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID') || SPREADSHEET_ID;
+  return SpreadsheetApp.openById(id);
+}
+
+function getCalendarSheet_() {
+  var sheet = getSpreadsheet_().getSheetByName(SHEET_NAME);
+  if (!sheet) throw new Error('calendarシートが見つかりません');
+  return sheet;
+}
+
+function getOrCreateSheet_(name) {
+  var spreadsheet = getSpreadsheet_();
+  var sheet = spreadsheet.getSheetByName(name);
+  if (!sheet) {
+    sheet = spreadsheet.insertSheet(name);
+    sheet.getRange(1, 1, 1, DATA_HEADERS.length).setValues([DATA_HEADERS]);
+  }
+  return sheet;
+}
+
+function getDataSheet_() {
+  return getOrCreateSheet_(DATA_SHEET_NAME);
+}
+
+function getRawSheet_() {
+  return getOrCreateSheet_(RAW_SHEET_NAME);
+}
+
+function appendBookingRaw_(userId, date, time, remindMessage) {
+  var row = [userId, date, time, remindMessage || ''];
+  appendBookingRawRows_(getDataSheet_(), [row]);
+  appendBookingRawRows_(getRawSheet_(), [row]);
+}
+
+/**
+ * エディタから手動実行する。
+ * Googleカレンダーの今後のレッスン予約を raw（なければ作成）と data の A〜D へ流し込む。
+ * 既に同じ LINE_UserID + date + time がある行は重複追加しない。
+ */
+function backfillExistingBookingsToRaw() {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    var rows = collectUpcomingBookingRawRows_();
+    var added = appendBookingRawRows_(getRawSheet_(), rows);
+    appendBookingRawRows_(getDataSheet_(), rows);
+    Logger.log('backfillExistingBookingsToRaw: added ' + added + ' row(s)');
+    return { ok: true, added: added };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function collectUpcomingBookingRawRows_() {
+  var now = new Date();
+  var from = new Date(now.getTime() - DURATION_MINUTES * 60 * 1000);
+  var to = parseTokyoDate_(tokyoPlusDays_(120));
+  var rows = [];
+  var seen = {};
+
+  getCalendar_().getEvents(from, to).forEach(function (event) {
+    if (!isOurBooking_(event)) return;
+    if (isSheetAvailability_(event)) return;
+    if (event.getEndTime().getTime() <= now.getTime()) return;
+    var start = event.getStartTime();
+    var userId = valueOf_(event.getDescription() || '', 'LINE_USER_ID');
+    if (!userId) return;
+    var date = tokyoDateString_(start);
+    var time = Utilities.formatDate(start, TZ, 'HH:mm');
+    var key = bookingRawKey_(userId, date, time);
+    if (!key || seen[key]) return;
+    seen[key] = true;
+    rows.push([userId, date, time, eveLineMessage_(start)]);
+  });
+
+  return rows;
+}
+
+function existingBookingRawKeys_(sheet) {
+  var existing = {};
+  var values = sheet.getDataRange().getValues();
+  for (var i = 1; i < values.length; i++) {
+    var key = bookingRawKey_(
+      String(values[i][0] != null ? values[i][0] : '').trim(),
+      sheetDateToYmd_(values[i][1]),
+      sheetTimeToHm_(values[i][2])
+    );
+    if (key) existing[key] = true;
+  }
+  return existing;
+}
+
+function appendBookingRawRows_(sheet, rows) {
+  var existing = existingBookingRawKeys_(sheet);
+  var fresh = [];
+  for (var i = 0; i < rows.length; i++) {
+    var key = bookingRawKey_(rows[i][0], rows[i][1], rows[i][2]);
+    if (!key || existing[key]) continue;
+    existing[key] = true;
+    fresh.push(rows[i]);
+  }
+  if (fresh.length) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, fresh.length, 4).setValues(fresh);
+  }
+  return fresh.length;
+}
+
+function bookingRawKey_(userId, date, time) {
+  if (!userId || !date || !time) return '';
+  return userId + '|' + date + '|' + time;
+}
+
+function removeBookingRaw_(userId, date, time) {
+  removeBookingRawFromSheet_(getDataSheet_(), userId, date, time);
+  removeBookingRawFromSheet_(getRawSheet_(), userId, date, time);
+}
+
+function removeBookingRawFromSheet_(sheet, userId, date, time) {
+  var values = sheet.getDataRange().getValues();
+  for (var i = values.length - 1; i >= 1; i--) {
+    var rowUserId = String(values[i][0] != null ? values[i][0] : '').trim();
+    var rowDate = sheetDateToYmd_(values[i][1]);
+    var rowTime = sheetTimeToHm_(values[i][2]);
+    if (rowUserId === userId && rowDate === date && rowTime === time) {
+      sheet.deleteRow(i + 1);
+      return;
+    }
+  }
+}
+
+function getCalendar_() {
+  var id = PropertiesService.getScriptProperties().getProperty('CALENDAR_ID');
+  var calendar = id ? CalendarApp.getCalendarById(id) : CalendarApp.getDefaultCalendar();
+  if (!calendar) throw new Error('カレンダーが見つかりません');
+  return calendar;
+}
+
+function isChecked_(value) {
+  return value === true || value === 'TRUE' || value === 'true' || value === 1 || value === '1';
+}
+
+function isSheetAvailability_(event) {
+  var desc = event.getDescription() || '';
+  return desc.indexOf(AVAILABILITY_TAG) !== -1;
+}
+
+function isOurBooking_(event) {
+  var title = String(event.getTitle() || '');
+  var desc = event.getDescription() || '';
+  return title.indexOf(BOOKING_TITLE_PREFIX) !== -1 ||
+    title.indexOf('レッスン予約') !== -1 ||
+    desc.indexOf('LINE_USER_ID:') !== -1;
+}
+
+function overlapsBusy_(start, end, busy) {
+  return busy.some(function (block) {
+    return block.start.getTime() < end.getTime() && block.end.getTime() > start.getTime();
+  });
+}
+
+function sheetDateToYmd_(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, TZ, 'yyyy-MM-dd');
+  }
+  var text = String(value).trim();
+  var dmy = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (dmy) return dmy[3] + '-' + pad2_(Number(dmy[2])) + '-' + pad2_(Number(dmy[1]));
+  var ymd = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (ymd) return ymd[1] + '-' + ymd[2] + '-' + ymd[3];
   return '';
 }
 
-function allowedTimes_() {
-  var times = [];
-  for (var minutes = 10 * 60; minutes <= 20 * 60; minutes += 30) {
-    times.push(pad2_(Math.floor(minutes / 60)) + ':' + pad2_(minutes % 60));
+function sheetTimeToHm_(value) {
+  if (value === '' || value === null || value === undefined) return '';
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) {
+    return Utilities.formatDate(value, TZ, 'HH:mm');
   }
-  return times;
+  var text = String(value).trim();
+  var match = text.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return '';
+  return pad2_(Number(match[1])) + ':' + match[2];
 }
 
-function appendRequest_(parsed) {
-  var sheet = getSheet_();
-  if (sheet.getLastRow() === 0) {
-    sheet.getRange(1, 1, 1, HEADERS.length).setValues([HEADERS]);
-    sheet.setFrozenRows(1);
+function pad2_(n) {
+  return (n < 10 ? '0' : '') + n;
+}
+
+function sendLineToStaff_(text) {
+  STAFF_LINE_USER_IDS.forEach(function (id) {
+    sendLine_(id, text);
+  });
+}
+
+function lessonNoFromRaw_(userId, date, time) {
+  var values = getRawSheet_().getDataRange().getValues();
+  var index = 0;
+  var found = 0;
+  for (var i = 1; i < values.length; i++) {
+    var rowUserId = String(values[i][0] != null ? values[i][0] : '').trim();
+    if (rowUserId !== userId) continue;
+    index++;
+    var rowDate = sheetDateToYmd_(values[i][1]);
+    var rowTime = sheetTimeToHm_(values[i][2]);
+    if (rowDate === date && rowTime === time) found = index;
   }
-
-  var submittedAt = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm:ss');
-  sheet.appendRow([
-    submittedAt,
-    safeCell_(parsed.name),
-    parsed.category,
-    formatSlot_(parsed.slots[0]),
-    formatSlot_(parsed.slots[1]),
-    formatSlot_(parsed.slots[2]),
-    safeCell_(parsed.note)
-  ]);
+  if (found) return found;
+  return index + 1;
 }
 
-function notifyLine_(parsed) {
-  var lines = [
-    '無料相談の予約希望が届きました。',
-    '',
-    '記入者: ' + parsed.name,
-    'カテゴリー: ' + parsed.category,
-    '',
-    '第1希望: ' + formatSlotJa_(parsed.slots[0]),
-    '第2希望: ' + formatSlotJa_(parsed.slots[1]),
-    '第3希望: ' + formatSlotJa_(parsed.slots[2])
-  ];
-  lines.push('');
-  lines.push('事前の質問・相談・共有事項:');
-  lines.push(parsed.note || '（なし）');
-  sendLine_(NOTIFY_LINE_USER_ID, lines.join('\n'));
+function lessonNumber_(event) {
+  var desc = event.getDescription() || '';
+  var stored = valueOf_(desc, 'LESSON_NO');
+  if (stored && stored !== '0') return stored;
+  var userId = valueOf_(desc, 'LINE_USER_ID');
+  var start = event.getStartTime();
+  var no = String(lessonNoFromRaw_(userId, tokyoDateString_(start), Utilities.formatDate(start, TZ, 'HH:mm')));
+  setDescFlag_(event, 'LESSON_NO', no);
+  return no;
 }
 
-function getSheet_() {
-  var id = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID') || SPREADSHEET_ID;
-  var spreadsheet = SpreadsheetApp.openById(id);
-  var sheet = spreadsheet.getSheetById(0) || spreadsheet.getSheets()[0];
-  if (!sheet) throw new Error('シートが見つかりません');
-  return sheet;
+function setDescFlag_(event, key, value) {
+  var desc = event.getDescription() || '';
+  var pattern = new RegExp(key + ':([^\\n]*)');
+  if (pattern.test(desc)) {
+    event.setDescription(desc.replace(pattern, key + ':' + value));
+  } else {
+    event.setDescription(desc + '\n' + key + ':' + value);
+  }
+}
+
+function formatStaffDate_(date) {
+  return Utilities.formatDate(date, TZ, 'dd/MM');
+}
+
+function formatStaffTime_(date) {
+  return Utilities.formatDate(date, TZ, 'HH:mm');
+}
+
+function withLessonType_(text, lessonType) {
+  var label = LESSON_TYPES[lessonType] || '';
+  if (!label) return text;
+  return text + '\n' + label;
+}
+
+function staffBookingMessage_(name, lessonNo, start, lessonType) {
+  return withLessonType_(
+    'New Booking: ' + name + ' booked lesson #' + lessonNo + ' for ' + formatStaffDate_(start) + ' at ' + formatStaffTime_(start) + '.',
+    lessonType
+  );
+}
+
+function staffEveMessage_(name, lessonNo, start, lessonType) {
+  return withLessonType_(
+    'Reminder: ' + name + ' has lesson #' + lessonNo + ' tomorrow (' + formatStaffDate_(start) + ') at ' + formatStaffTime_(start) + '.',
+    lessonType
+  );
+}
+
+function staffHourMessage_(name, lessonNo, start, lessonType) {
+  return withLessonType_(
+    "Reminder: " + name + "'s lesson #" + lessonNo + ' starts in 1 hour (' + formatStaffDate_(start) + ' at ' + formatStaffTime_(start) + ').',
+    lessonType
+  );
 }
 
 function sendLine_(userId, text) {
@@ -186,33 +715,21 @@ function sendLine_(userId, text) {
   });
 }
 
-function safeCell_(value) {
-  var text = String(value || '');
-  if (/^[=+\-@]/.test(text)) return "'" + text;
-  return text;
-}
-
-function formatSlot_(slot) {
-  return slot.date + ' ' + slot.time;
-}
-
-function formatSlotJa_(slot) {
-  var start = slotStart_(slot.date, slot.time);
-  return Utilities.formatDate(start, TZ, 'M月d日') + '（' + weekdayJa_(start) + '）' + slot.time;
-}
-
-function weekdayJa_(date) {
-  var weekday = Number(Utilities.formatDate(date, TZ, 'u'));
-  return WEEKDAY_JA[weekday === 7 ? 0 : weekday];
-}
-
-function isValidYmd_(ymd) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
-  return Utilities.formatDate(slotStart_(ymd, '12:00'), TZ, 'yyyy-MM-dd') === ymd;
-}
-
 function slotStart_(date, time) {
   return new Date(date + 'T' + time + ':00+09:00');
+}
+
+function parseTokyoDate_(date) {
+  return new Date(date + 'T00:00:00+09:00');
+}
+
+function endOfDay_(startDay) {
+  var ymd = tokyoDateString_(startDay);
+  return new Date(parseTokyoDate_(ymd).getTime() + 24 * 60 * 60 * 1000);
+}
+
+function tokyoDateString_(date) {
+  return Utilities.formatDate(date, TZ, 'yyyy-MM-dd');
 }
 
 function tokyoPlusDays_(days) {
@@ -221,8 +738,73 @@ function tokyoPlusDays_(days) {
   return utc.toISOString().slice(0, 10);
 }
 
-function pad2_(n) {
-  return (n < 10 ? '0' : '') + n;
+function weekdayJa_(date) {
+  var weekday = Number(Utilities.formatDate(date, TZ, 'u'));
+  return WEEKDAY_JA[weekday === 7 ? 0 : weekday];
+}
+
+function formatLessonWhen_(date) {
+  return Utilities.formatDate(date, TZ, 'M月d日') + '（' + weekdayJa_(date) + '）' +
+    Utilities.formatDate(date, TZ, 'HH:mm') + '〜';
+}
+
+function calendarStudentName_(userName) {
+  var name = String(userName || '').trim();
+  if (!name || name === 'ゲスト') return 'Guest';
+  return name;
+}
+
+function bookingEventTitle_(userName) {
+  return BOOKING_TITLE_PREFIX + ' (' + calendarStudentName_(userName) + ')';
+}
+
+function lessonLineMessage_(start, intro, enterLine) {
+  return [
+    intro,
+    '・' + formatLessonWhen_(start),
+    '・レッスン時間は約20分',
+    '',
+    enterLine,
+    ZOOM_URL,
+    '',
+    'Enjoy your lesson✈️'
+  ].join('\n');
+}
+
+function bookingLineMessage_(start) {
+  return lessonLineMessage_(
+    start,
+    'ご予約ありがとうございます。',
+    '当日は、下記リンクよりご入室ください。'
+  );
+}
+
+function eveLineMessage_(start) {
+  return lessonLineMessage_(
+    start,
+    'レッスン前日のリマインドです。',
+    '明日は、下記リンクよりご入室ください。'
+  );
+}
+
+function bookingDescription_(userId, userName, lessonType) {
+  return [
+    'Online lesson booking',
+    'Student: ' + calendarStudentName_(userName),
+    'LINE_USER_ID:' + userId,
+    'LINE_DISPLAY_NAME:' + userName,
+    'LESSON_TYPE:' + (lessonType || ''),
+    'PREV_DAY_REMINDER_SENT:false',
+    'STAFF_EVE_SENT:false',
+    'STAFF_HOUR_SENT:false',
+    'Meeting link:',
+    ZOOM_URL
+  ].join('\n');
+}
+
+function valueOf_(desc, key) {
+  var match = desc.match(new RegExp(key + ':([^\\n]+)'));
+  return match ? match[1].trim() : '';
 }
 
 function json_(obj) {

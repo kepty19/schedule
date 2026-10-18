@@ -3,10 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>無料相談の予約</title>
+  <title>レッスン予約 | Kepty English</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
     :root {
       --kepty-orange: #CE4A22;
@@ -49,7 +50,9 @@
       padding: 24px 20px 22px;
     }
 
-    .brand { margin-bottom: 14px; }
+    .brand {
+      margin-bottom: 14px;
+    }
 
     .brand-name {
       font-size: 13px;
@@ -66,39 +69,72 @@
       font-weight: 800;
     }
 
-    .hero-lead {
-      margin: 8px 0 0;
-      font-size: 14px;
-      line-height: 1.6;
-      opacity: 0.92;
-    }
-
     .content {
       padding: 16px 16px 24px;
       flex: 1;
     }
 
+    .account,
     .panel {
       background: #fff;
       border: 1px solid var(--line);
       border-radius: 18px;
+    }
+
+    .account {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 13px 14px;
+      background: #fff;
+      border: 1px solid #C4B8B0;
+      border-radius: 12px;
+    }
+
+    .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #2A221F;
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .account-label {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+
+    .account-name {
+      margin: 2px 0 0;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .panel {
+      margin-top: 14px;
       padding: 16px;
       overflow: hidden;
     }
 
-    .panel + .panel,
     .board {
-      margin-top: 14px;
-    }
-
-    .board {
+      margin-top: 16px;
       border: 1px solid var(--kepty-mid-orange);
       border-radius: 20px;
       overflow: hidden;
       background: #fff;
     }
 
-    .board-block { padding: 16px; }
+    .board-block {
+      padding: 16px;
+    }
 
     .board-block.is-now {
       background: linear-gradient(180deg, var(--kepty-light-orange) 0%, #fff 78%);
@@ -110,8 +146,8 @@
     }
 
     .board-block h2,
-    .panel h2,
-    .field-label {
+    .panel label,
+    .panel h2 {
       display: block;
       margin: 0 0 10px;
       font-size: 12px;
@@ -120,11 +156,9 @@
       color: var(--kepty-orange);
     }
 
-    .board-block h2,
-    .panel h2 {
+    .board-block h2 {
       display: flex;
       align-items: center;
-      flex-wrap: wrap;
       gap: 8px;
       font-size: 13px;
       letter-spacing: 0.04em;
@@ -143,40 +177,20 @@
       border: 2px solid var(--kepty-orange);
     }
 
-    .field-label { margin: 14px 0 8px; }
-
-    .board-block h2 + .hint,
-    .panel h2 + .hint { margin-top: -2px; }
-
-    .hint {
-      margin: 0 0 12px;
-      font-size: 13px;
-      line-height: 1.6;
-      color: var(--muted);
-    }
-
-    .badge {
-      display: inline-block;
-      margin-left: 8px;
-      padding: 2px 6px;
-      border-radius: 999px;
-      font-size: 10px;
+    .field-label {
+      display: block;
+      margin: 14px 0 8px;
+      font-size: 12px;
       font-weight: 800;
-      letter-spacing: 0.04em;
-      vertical-align: 1px;
+      letter-spacing: 0.06em;
+      color: var(--kepty-orange);
     }
 
-    .badge.is-required {
-      background: var(--kepty-orange);
-      color: #fff;
+    .board-block h2 + .field-label {
+      margin-top: 2px;
     }
 
-    .badge.is-optional {
-      background: #F0E6E1;
-      color: var(--muted);
-    }
-
-    .control {
+    #dateSelect {
       display: block;
       width: 100%;
       max-width: 100%;
@@ -185,7 +199,6 @@
       border: 1px solid var(--line);
       border-radius: 14px;
       background: #fff;
-      font: inherit;
       font-size: 16px;
       font-weight: 700;
       color: var(--ink);
@@ -194,21 +207,9 @@
       appearance: none;
     }
 
-    textarea.control {
-      min-height: 120px;
-      font-weight: 600;
-      line-height: 1.6;
-      resize: vertical;
-    }
-
-    .control:focus {
+    #dateSelect:focus {
       outline: 2px solid var(--kepty-mid-orange);
       border-color: var(--kepty-orange);
-    }
-
-    .control::placeholder {
-      color: #B7AEA8;
-      font-weight: 600;
     }
 
     #timeSlots {
@@ -240,6 +241,66 @@
       color: #fff;
     }
 
+    .lesson-format {
+      margin-top: 16px;
+    }
+
+    .lesson-format .field-label {
+      margin-top: 0;
+    }
+
+    .lesson-options {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .lesson-option {
+      position: relative;
+      width: 100%;
+      min-height: 64px;
+      padding: 12px 14px 12px 42px;
+      border-radius: 10px;
+      border: 1px solid #D5CDC8;
+      background: #fff;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 600;
+      line-height: 1.45;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .lesson-option::before {
+      content: "";
+      position: absolute;
+      left: 14px;
+      top: 16px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      border: 1.5px solid #C3BAB5;
+      background: #fff;
+      box-sizing: border-box;
+    }
+
+    .lesson-option:hover {
+      border-color: #B7AEA8;
+      background: #FBF9F8;
+    }
+
+    .lesson-option.is-selected {
+      border-color: var(--kepty-orange);
+      box-shadow: inset 0 0 0 1px var(--kepty-orange);
+      background: #fff;
+    }
+
+    .lesson-option.is-selected::before {
+      border-color: var(--kepty-orange);
+      background:
+        radial-gradient(circle at center, var(--kepty-orange) 0 4.5px, #fff 5.5px);
+    }
+
     .slot:disabled {
       background: #f4eeeb;
       border-color: #eadfd9;
@@ -248,102 +309,74 @@
       cursor: not-allowed;
     }
 
-    .options {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
+    .status {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 28px 8px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.7;
     }
 
-    .option {
-      position: relative;
-      width: 100%;
-      min-height: 52px;
-      padding: 14px 14px 14px 42px;
-      border-radius: 10px;
-      border: 1px solid #D5CDC8;
-      background: #fff;
-      color: var(--ink);
-      font-size: 15px;
-      font-weight: 700;
-      line-height: 1.45;
-      text-align: left;
-      cursor: pointer;
-    }
+    .status.is-error { color: #b42318; }
 
-    .option::before {
-      content: "";
-      position: absolute;
-      left: 14px;
-      top: 50%;
-      width: 16px;
-      height: 16px;
-      margin-top: -8px;
-      border-radius: 50%;
-      border: 1.5px solid #C3BAB5;
-      background: #fff;
-      box-sizing: border-box;
-    }
-
-    .option:hover {
-      border-color: #B7AEA8;
-      background: #FBF9F8;
-    }
-
-    .option.is-selected {
-      border-color: var(--kepty-orange);
-      box-shadow: inset 0 0 0 1px var(--kepty-orange);
-      background: #fff;
-    }
-
-    .option.is-selected::before {
-      border-color: var(--kepty-orange);
-      background: radial-gradient(circle at center, var(--kepty-orange) 0 4.5px, #fff 5.5px);
-    }
-
-    .preference-list {
+    .booking-list {
       display: flex;
       flex-direction: column;
       gap: 10px;
     }
 
-    .preference {
+    .booking {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
       padding: 12px;
-      border: 1px dashed #E4D8D2;
+      border: 1px solid var(--kepty-mid-orange);
       border-radius: 14px;
-      background: #fff;
-    }
-
-    .preference.is-filled {
-      border-style: solid;
-      border-color: var(--kepty-mid-orange);
       background: var(--kepty-light-orange);
     }
 
-    .preference-rank {
-      margin: 0;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.04em;
-      color: var(--kepty-orange);
+    .booking.is-current {
+      padding: 16px;
+      background: linear-gradient(180deg, #fff 0%, var(--kepty-light-orange) 100%);
+      border-width: 1.5px;
     }
 
-    .preference-when {
-      margin: 2px 0 0;
+    .booking-badge {
+      display: inline-block;
+      margin-bottom: 6px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: var(--kepty-orange);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+    }
+
+    .booking-badge.is-live {
+      background: var(--kepty-orange-deep);
+    }
+
+    .booking-when {
+      margin: 0;
       font-size: 15px;
       font-weight: 800;
       line-height: 1.4;
     }
 
-    .preference:not(.is-filled) .preference-when {
-      color: var(--muted);
-      font-weight: 600;
+    .booking.is-current .booking-when {
+      font-size: 18px;
     }
 
-    .remove-btn {
+    .booking-note {
+      margin: 4px 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    .cancel-btn {
       flex-shrink: 0;
       border: 1.5px solid var(--kepty-orange);
       border-radius: 12px;
@@ -355,16 +388,25 @@
       cursor: pointer;
     }
 
-    .status {
-      grid-column: 1 / -1;
-      text-align: center;
-      padding: 18px 8px;
-      font-size: 13px;
-      color: var(--muted);
-      line-height: 1.7;
+    #currentBookings .status,
+    #timeSlots .status {
+      padding: 12px 4px;
     }
 
-    .status.is-error { color: #b42318; }
+    .modal-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .modal-actions button {
+      flex: 1;
+    }
+
+    .modal-card button.is-ghost {
+      background: #fff;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
 
     .footer {
       position: sticky;
@@ -398,7 +440,6 @@
       align-items: center;
       justify-content: center;
       padding: 20px;
-      z-index: 2;
     }
 
     .modal.is-open { display: flex; }
@@ -439,9 +480,13 @@
       white-space: pre-line;
     }
 
-    .modal-card p:empty { display: none; }
+    .modal-card p:empty {
+      display: none;
+    }
 
-    .modal-icon[hidden] { display: none; }
+    .modal-icon[hidden] {
+      display: none;
+    }
 
     .modal-card button {
       width: 100%;
@@ -459,87 +504,76 @@
   <div class="app">
     <header class="hero">
       <div class="brand">
-        <div class="brand-name">保護者の方向け</div>
+        <div class="brand-name">Kepty English</div>
       </div>
-      <h1>無料相談の予約</h1>
-      <p class="hero-lead">希望の日時を3つお送りください。内容を確認のうえ、ご連絡します。</p>
+      <h1>レッスン予約</h1>
     </header>
 
-    <form id="reservationForm" class="content" novalidate>
-      <section class="panel" aria-labelledby="nameHeading">
-        <h2 id="nameHeading"><span class="board-mark" aria-hidden="true"></span>記入者の氏名<span class="badge is-required">必須</span></h2>
-        <input class="control" id="applicantName" name="name" type="text" maxlength="80" autocomplete="name" placeholder="山田 花子" required>
-      </section>
-
-      <section class="panel" aria-labelledby="categoryHeading">
-        <h2 id="categoryHeading"><span class="board-mark" aria-hidden="true"></span>選手の所属カテゴリー<span class="badge is-required">必須</span></h2>
-        <div class="options" role="radiogroup" aria-label="選手の所属カテゴリー">
-          <button type="button" class="option" data-category="U-18" role="radio" aria-checked="false">U-18</button>
-          <button type="button" class="option" data-category="U-15" role="radio" aria-checked="false">U-15</button>
-          <button type="button" class="option" data-category="U-12" role="radio" aria-checked="false">U-12</button>
-          <button type="button" class="option" data-category="U-10" role="radio" aria-checked="false">U-10</button>
-          <button type="button" class="option" data-category="その他" role="radio" aria-checked="false">その他</button>
+    <main class="content">
+      <section class="account" aria-label="予約アカウント">
+        <div class="avatar" id="userInitial">K</div>
+        <div>
+          <p class="account-label">LINEアカウント</p>
+          <p class="account-name" id="userNameDisplay">読み込み中...</p>
         </div>
       </section>
 
-      <section class="board" aria-label="無料相談の実施希望日時">
+      <section class="board" aria-label="ご予約状況">
         <div class="board-block is-now">
-          <h2><span class="board-mark" aria-hidden="true"></span>実施希望日時<span class="badge is-required">必須</span></h2>
-          <p class="hint">第1希望から第3希望まで、3つ選んでください。日付を変えて別の日も選べます。</p>
-          <div id="preferenceList" class="preference-list" aria-live="polite"></div>
+          <h2><span class="board-mark" aria-hidden="true"></span>現在のご予約状況</h2>
+          <div id="currentBookings">
+            <div class="status">公式LINEから開くと、予約の確認ができます</div>
+          </div>
         </div>
         <div class="board-block is-later">
+          <h2><span class="board-mark" aria-hidden="true"></span>今後のご予約</h2>
           <label class="field-label" for="dateSelect">日付</label>
-          <input class="control" type="date" id="dateSelect" required>
-          <p class="field-label">開始時刻</p>
-          <div id="timeSlots"></div>
+          <input type="date" id="dateSelect">
+          <p class="field-label">開始時刻（レッスン時間20分）</p>
+          <div id="timeSlots">
+            <div class="status">日付を選ぶと空き枠を表示します</div>
+          </div>
+          <div id="lessonFormat" class="lesson-format" hidden>
+            <p class="field-label">レッスン形式</p>
+            <div class="lesson-options" role="radiogroup" aria-label="レッスン形式">
+              <button type="button" class="lesson-option" data-format="guided" role="radio" aria-checked="false">専属講師が主導する<br>授業形式のレッスン</button>
+              <button type="button" class="lesson-option" data-format="freetalk" role="radio" aria-checked="false">専属講師と自由に会話する<br>フリートークレッスン</button>
+            </div>
+          </div>
         </div>
       </section>
-
-      <section class="panel" aria-labelledby="noteHeading">
-        <h2 id="noteHeading"><span class="board-mark" aria-hidden="true"></span>事前の質問・相談・共有事項<span class="badge is-optional">任意</span></h2>
-        <textarea class="control" id="note" name="note" maxlength="2000" placeholder="事前に共有したいことがあればご記入ください"></textarea>
-      </section>
-    </form>
+    </main>
 
     <div class="footer">
-      <button id="submitBtn" type="submit" form="reservationForm" disabled>氏名を入力してください</button>
+      <button id="submitBtn" type="button" disabled>日時を選択してください</button>
     </div>
   </div>
 
   <div class="modal" id="modal">
     <div class="modal-card">
       <div class="modal-icon" id="modalIcon">✓</div>
-      <h3 id="modalTitle">希望を送信しました。</h3>
+      <h3 id="modalTitle">✅ 予約を完了しました。</h3>
       <p id="modalMessage"></p>
-      <button type="button" id="modalPrimary">閉じる</button>
+      <div class="modal-actions">
+        <button type="button" class="is-ghost" id="modalSecondary" hidden>もどる</button>
+        <button type="button" id="modalPrimary">閉じる</button>
+      </div>
     </div>
   </div>
 
   <script>
-    // ウェブアプリをデプロイしたあと、発行された URL をここに入れる。
-    const GAS_URL = "";
-    const PREFERENCE_COUNT = 3;
-    const HORIZON_DAYS = 90;
-    const TIME_SLOTS = buildTimeSlots();
-    const RANKS = ["第1希望", "第2希望", "第3希望"];
+    const LIFF_ID = "2009159043-q2GIlpyC";
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbx516RKAUhQsR8qMiMocJb0fEfAyZFfFXXAGJ5TPdjpgfISYLRNQKJVkVPcIWSL4nsb8g/exec";
 
-    let category = "";
-    let preferences = [];
-    let submitting = false;
+    let currentUserId = "";
+    let currentUserName = "ゲスト";
+    let selectedTime = "";
+    let selectedFormat = "";
+    let inLine = false;
+    let pendingCancel = null;
     let modalPrimaryAction = null;
 
-    function buildTimeSlots() {
-      const slots = [];
-      for (let minutes = 10 * 60; minutes <= 20 * 60; minutes += 30) {
-        const hour = String(Math.floor(minutes / 60)).padStart(2, "0");
-        const minute = String(minutes % 60).padStart(2, "0");
-        slots.push(`${hour}:${minute}`);
-      }
-      return slots;
-    }
-
-    function tokyoDate(offsetDays) {
+    function tokyoPlusDays(days) {
       const parts = new Intl.DateTimeFormat("en-CA", {
         timeZone: "Asia/Tokyo",
         year: "numeric",
@@ -549,142 +583,44 @@
       const year = Number(parts.find((part) => part.type === "year").value);
       const month = Number(parts.find((part) => part.type === "month").value);
       const day = Number(parts.find((part) => part.type === "day").value);
-      return new Date(Date.UTC(year, month - 1, day + (offsetDays || 0))).toISOString().slice(0, 10);
+      return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
     }
 
-    function formatWhen(date, time) {
-      const weeks = ["日", "月", "火", "水", "木", "金", "土"];
-      const parsed = new Date(`${date}T12:00:00+09:00`);
-      const month = Number(date.slice(5, 7));
-      const day = Number(date.slice(8, 10));
-      return `${month}月${day}日（${weeks[parsed.getUTCDay()]}）${time}`;
+    function setUser(name, userId) {
+      currentUserName = name;
+      currentUserId = userId || "";
+      document.getElementById("userNameDisplay").textContent = name;
+      document.getElementById("userInitial").textContent = (name || "K").trim().charAt(0).toUpperCase();
     }
 
-    function isPastSlot(date, time) {
-      return new Date(`${date}T${time}:00+09:00`).getTime() <= Date.now();
-    }
-
-    function preferenceIndex(date, time) {
-      return preferences.findIndex((slot) => slot.date === date && slot.time === time);
-    }
-
-    function selectedName() {
-      return document.getElementById("applicantName").value.trim();
+    function resetSubmit(label) {
+      selectedTime = "";
+      selectedFormat = "";
+      const formatBox = document.getElementById("lessonFormat");
+      formatBox.hidden = true;
+      formatBox.querySelectorAll(".lesson-option").forEach((btn) => {
+        btn.classList.remove("is-selected");
+        btn.setAttribute("aria-checked", "false");
+      });
+      const submitBtn = document.getElementById("submitBtn");
+      submitBtn.disabled = true;
+      submitBtn.textContent = label || "日時を選択してください";
     }
 
     function updateSubmit() {
       const submitBtn = document.getElementById("submitBtn");
-      if (submitting) return;
-      if (!selectedName()) {
+      if (!selectedTime) {
         submitBtn.disabled = true;
-        submitBtn.textContent = "氏名を入力してください";
+        submitBtn.textContent = "日時を選択してください";
         return;
       }
-      if (!category) {
+      if (!selectedFormat) {
         submitBtn.disabled = true;
-        submitBtn.textContent = "カテゴリーを選択してください";
-        return;
-      }
-      if (preferences.length < PREFERENCE_COUNT) {
-        const remaining = PREFERENCE_COUNT - preferences.length;
-        submitBtn.disabled = true;
-        submitBtn.textContent = `希望日時をあと${remaining}つ選択してください`;
+        submitBtn.textContent = "レッスン形式を選択してください";
         return;
       }
       submitBtn.disabled = false;
-      submitBtn.textContent = "希望を送信する";
-    }
-
-    function renderPreferences() {
-      const list = document.getElementById("preferenceList");
-      list.innerHTML = "";
-      RANKS.forEach((rank, index) => {
-        const slot = preferences[index];
-        const row = document.createElement("div");
-        row.className = slot ? "preference is-filled" : "preference";
-        const info = document.createElement("div");
-        const label = document.createElement("p");
-        label.className = "preference-rank";
-        label.textContent = rank;
-        const when = document.createElement("p");
-        when.className = "preference-when";
-        when.textContent = slot ? formatWhen(slot.date, slot.time) : "未選択";
-        info.appendChild(label);
-        info.appendChild(when);
-        row.appendChild(info);
-        if (slot) {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "remove-btn";
-          button.textContent = "外す";
-          button.addEventListener("click", () => removePreference(index));
-          row.appendChild(button);
-        }
-        list.appendChild(row);
-      });
-    }
-
-    function renderTimeSlots() {
-      const box = document.getElementById("timeSlots");
-      const date = document.getElementById("dateSelect").value;
-      box.innerHTML = "";
-      if (!date) {
-        box.innerHTML = '<div class="status">日付を選んでください</div>';
-        return;
-      }
-
-      const available = TIME_SLOTS.filter((time) => !isPastSlot(date, time));
-      if (!available.length) {
-        box.innerHTML = '<div class="status">この日に選べる時刻はありません</div>';
-        return;
-      }
-
-      available.forEach((time) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "slot";
-        button.textContent = time;
-        if (preferenceIndex(date, time) !== -1) button.classList.add("is-selected");
-        button.addEventListener("click", () => toggleTime(date, time));
-        box.appendChild(button);
-      });
-    }
-
-    function toggleTime(date, time) {
-      const index = preferenceIndex(date, time);
-      if (index !== -1) {
-        preferences.splice(index, 1);
-      } else if (preferences.length >= PREFERENCE_COUNT) {
-        openModal({
-          icon: "!",
-          title: "希望日時は3つまでです。",
-          message: "選び直す場合は、上の希望を外してください。",
-          primary: "閉じる"
-        });
-        return;
-      } else {
-        preferences.push({ date, time });
-      }
-      renderPreferences();
-      renderTimeSlots();
-      updateSubmit();
-    }
-
-    function removePreference(index) {
-      preferences.splice(index, 1);
-      renderPreferences();
-      renderTimeSlots();
-      updateSubmit();
-    }
-
-    function selectCategory(button) {
-      category = button.dataset.category;
-      document.querySelectorAll(".option").forEach((item) => {
-        const on = item === button;
-        item.classList.toggle("is-selected", on);
-        item.setAttribute("aria-checked", on ? "true" : "false");
-      });
-      updateSubmit();
+      submitBtn.textContent = `${selectedTime} で予約する`;
     }
 
     function openModal(options) {
@@ -696,110 +632,308 @@
       const primary = document.getElementById("modalPrimary");
       primary.disabled = false;
       primary.textContent = options.primary || "閉じる";
+      const secondary = document.getElementById("modalSecondary");
+      if (options.secondary) {
+        secondary.hidden = false;
+        secondary.textContent = options.secondary;
+      } else {
+        secondary.hidden = true;
+      }
       modalPrimaryAction = options.onPrimary || closeModal;
       document.getElementById("modal").classList.add("is-open");
     }
 
     function closeModal() {
       document.getElementById("modal").classList.remove("is-open");
+      pendingCancel = null;
       modalPrimaryAction = null;
     }
 
-    function resetForm() {
-      document.getElementById("reservationForm").reset();
-      category = "";
-      preferences = [];
-      document.querySelectorAll(".option").forEach((item) => {
-        item.classList.remove("is-selected");
-        item.setAttribute("aria-checked", "false");
+    function guestStatus() {
+      return '<div class="status">公式LINEから開くと、予約の確認ができます</div>';
+    }
+
+    function renderBookingCard(booking, options) {
+      const row = document.createElement("div");
+      row.className = options.current ? "booking is-current" : "booking";
+      const info = document.createElement("div");
+      if (options.badge) {
+        const badge = document.createElement("span");
+        badge.className = options.live ? "booking-badge is-live" : "booking-badge";
+        badge.textContent = options.badge;
+        info.appendChild(badge);
+      }
+      const when = document.createElement("p");
+      when.className = "booking-when";
+      when.textContent = booking.when;
+      const note = document.createElement("p");
+      note.className = "booking-note";
+      note.textContent = "レッスン時間 20分";
+      info.appendChild(when);
+      info.appendChild(note);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "cancel-btn";
+      btn.textContent = "取り消す";
+      btn.addEventListener("click", () => askCancel(booking));
+      row.appendChild(info);
+      row.appendChild(btn);
+      return row;
+    }
+
+    function fillBox(box, nodes, emptyText) {
+      box.innerHTML = "";
+      box.classList.add("booking-list");
+      if (!nodes.length) {
+        box.innerHTML = '<div class="status">' + emptyText + "</div>";
+        return;
+      }
+      nodes.forEach((node) => box.appendChild(node));
+    }
+
+    async function loadBookings() {
+      const currentBox = document.getElementById("currentBookings");
+      if (!currentUserId) {
+        currentBox.innerHTML = guestStatus();
+        return;
+      }
+      currentBox.innerHTML = '<div class="status">予約を確認しています...</div>';
+      try {
+        const response = await fetch(`${GAS_URL}?action=bookings&userId=${encodeURIComponent(currentUserId)}`);
+        const data = await response.json();
+        const bookings = data.bookings || [];
+        const now = Date.now();
+        const cards = bookings.map((booking, index) => {
+          const live = booking.startMs <= now && now < booking.endMs;
+          return renderBookingCard(booking, {
+            current: index === 0,
+            live,
+            badge: live ? "レッスン中" : (index === 0 ? "次回のレッスン" : "")
+          });
+        });
+        fillBox(currentBox, cards, "現在の予約はありません");
+      } catch (error) {
+        currentBox.innerHTML = '<div class="status is-error">予約の取得に失敗しました。しばらくして再度お試しください。</div>';
+      }
+    }
+
+    function askCancel(booking) {
+      if (!currentUserId) {
+        openModal({ title: "公式LINEの予約メニューから開いてください。", icon: "!", primary: "閉じる" });
+        return;
+      }
+      pendingCancel = booking;
+      openModal({
+        icon: "!",
+        title: "この予約を取り消しますか？",
+        message: booking.when,
+        primary: "取り消す",
+        secondary: "もどる",
+        onPrimary: confirmCancel
       });
-      const dateSelect = document.getElementById("dateSelect");
-      dateSelect.min = tokyoDate(0);
-      dateSelect.max = tokyoDate(HORIZON_DAYS);
-      dateSelect.value = tokyoDate(0);
-      renderPreferences();
-      renderTimeSlots();
+    }
+
+    async function confirmCancel() {
+      const booking = pendingCancel;
+      if (!booking) {
+        closeModal();
+        return;
+      }
+      document.getElementById("modalPrimary").textContent = "処理中...";
+      document.getElementById("modalPrimary").disabled = true;
+      try {
+        const response = await fetch(GAS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "cancel",
+            userId: currentUserId,
+            eventId: booking.eventId
+          })
+        });
+        const result = await response.json();
+        document.getElementById("modalPrimary").disabled = false;
+        if (result.success) {
+          openModal({
+            icon: "✓",
+            title: "予約を取り消しました。",
+            primary: "閉じる",
+            onPrimary: () => {
+              closeModal();
+              loadBookings();
+              loadTimeSlots();
+            }
+          });
+        } else {
+          openModal({
+            icon: "!",
+            title: "取り消せませんでした。",
+            message: "時間をおいて、もう一度お試しください。",
+            primary: "閉じる"
+          });
+        }
+        await loadBookings();
+        await loadTimeSlots();
+      } catch (error) {
+        document.getElementById("modalPrimary").disabled = false;
+        openModal({
+          icon: "!",
+          title: "取り消せませんでした。",
+          message: "時間をおいて、もう一度お試しください。",
+          primary: "閉じる"
+        });
+      }
+    }
+
+    async function loadTimeSlots() {
+      const timeSlotsDiv = document.getElementById("timeSlots");
+      const date = document.getElementById("dateSelect").value;
+      resetSubmit();
+      timeSlotsDiv.innerHTML = '<div class="status">カレンダーの空き枠を確認中...</div>';
+
+      try {
+        const response = await fetch(`${GAS_URL}?date=${encodeURIComponent(date)}`);
+        const data = await response.json();
+        const slots = (Array.isArray(data) ? data : (data.slots || [])).filter((slot) => slot && slot.time && slot.available !== false);
+        if (!slots.length) {
+          timeSlotsDiv.innerHTML = '<div class="status">この日に予約できる枠はありません</div>';
+          return;
+        }
+        displayTimeSlots(slots);
+      } catch (error) {
+        timeSlotsDiv.innerHTML = '<div class="status is-error">空き枠の取得に失敗しました。公式LINEから開き直すか、しばらくして再度お試しください。</div>';
+      }
+    }
+
+    function displayTimeSlots(slots) {
+      const timeSlotsDiv = document.getElementById("timeSlots");
+      timeSlotsDiv.innerHTML = "";
+      slots.forEach((slot) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "slot";
+        btn.textContent = slot.time;
+        if (!slot.available) {
+          btn.disabled = true;
+        } else {
+          btn.addEventListener("click", () => selectTime(btn, slot.time));
+        }
+        timeSlotsDiv.appendChild(btn);
+      });
+    }
+
+    function selectTime(clickedBtn, time) {
+      document.querySelectorAll(".slot").forEach((btn) => btn.classList.remove("is-selected"));
+      clickedBtn.classList.add("is-selected");
+      selectedTime = time;
+      document.getElementById("lessonFormat").hidden = false;
       updateSubmit();
     }
 
-    async function submitReservation(event) {
-      event.preventDefault();
-      if (submitting || document.getElementById("submitBtn").disabled) return;
-      if (!GAS_URL) {
-        openModal({
-          icon: "!",
-          title: "送信先が未設定です。",
-          message: "ウェブアプリのURLを設定してから、もう一度お試しください。",
-          primary: "閉じる"
-        });
+    function selectFormat(clickedBtn, format) {
+      selectedFormat = format;
+      document.querySelectorAll(".lesson-option").forEach((btn) => {
+        const on = btn === clickedBtn;
+        btn.classList.toggle("is-selected", on);
+        btn.setAttribute("aria-checked", on ? "true" : "false");
+      });
+      updateSubmit();
+    }
+
+    async function submitReservation() {
+      const submitBtn = document.getElementById("submitBtn");
+      if (!currentUserId) {
+        openModal({ title: "公式LINEの予約メニューから開いてください。", icon: "!", primary: "閉じる" });
         return;
       }
-
-      const submitBtn = document.getElementById("submitBtn");
-      submitting = true;
+      submitBtn.textContent = "予約処理中...";
       submitBtn.disabled = true;
-      submitBtn.textContent = "送信中...";
 
       try {
         const response = await fetch(GAS_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify({
-            name: selectedName(),
-            category,
-            preferences,
-            note: document.getElementById("note").value.trim()
+            userId: currentUserId,
+            userName: currentUserName,
+            date: document.getElementById("dateSelect").value,
+            time: selectedTime,
+            lessonType: selectedFormat
           })
         });
         const result = await response.json();
-        submitting = false;
         if (result.success) {
-          resetForm();
           openModal({
             hideIcon: true,
-            title: "希望を送信しました。",
-            message: "内容を確認のうえ、ご連絡します。",
-            primary: "閉じる"
+            title: "✅ 予約を完了しました。",
+            primary: "閉じる",
+            onPrimary: () => {
+              closeModal();
+              loadBookings();
+              loadTimeSlots();
+            }
           });
+          loadBookings();
+          loadTimeSlots();
         } else {
           openModal({
             icon: "!",
-            title: "送信できませんでした。",
-            message: result.message || "時間をおいて、もう一度お試しください。",
+            title: "予約できませんでした。",
+            message: "別の日時を選ぶか、時間をおいてお試しください。",
             primary: "閉じる"
           });
-          updateSubmit();
+          loadTimeSlots();
         }
       } catch (error) {
-        submitting = false;
         openModal({
           icon: "!",
-          title: "送信できませんでした。",
+          title: "予約できませんでした。",
           message: "時間をおいて、もう一度お試しください。",
           primary: "閉じる"
         });
+        submitBtn.disabled = false;
         updateSubmit();
       }
     }
 
-    document.addEventListener("DOMContentLoaded", () => {
+    document.addEventListener("DOMContentLoaded", async () => {
       const dateSelect = document.getElementById("dateSelect");
-      dateSelect.min = tokyoDate(0);
-      dateSelect.max = tokyoDate(HORIZON_DAYS);
-      dateSelect.value = tokyoDate(0);
-      dateSelect.addEventListener("change", renderTimeSlots);
-      document.getElementById("applicantName").addEventListener("input", updateSubmit);
-      document.querySelectorAll(".option").forEach((button) => {
-        button.addEventListener("click", () => selectCategory(button));
+      dateSelect.min = tokyoPlusDays(0);
+      dateSelect.value = tokyoPlusDays(0);
+      dateSelect.addEventListener("change", loadTimeSlots);
+      document.getElementById("submitBtn").addEventListener("click", submitReservation);
+      document.querySelectorAll(".lesson-option").forEach((btn) => {
+        btn.addEventListener("click", () => selectFormat(btn, btn.dataset.format));
       });
-      document.getElementById("reservationForm").addEventListener("submit", submitReservation);
       document.getElementById("modalPrimary").addEventListener("click", () => {
         if (modalPrimaryAction) modalPrimaryAction();
         else closeModal();
       });
-      renderPreferences();
-      renderTimeSlots();
-      updateSubmit();
+      document.getElementById("modalSecondary").addEventListener("click", closeModal);
+
+      loadTimeSlots();
+
+      try {
+        await Promise.race([
+          liff.init({ liffId: LIFF_ID }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("liff timeout")), 4000))
+        ]);
+        inLine = liff.isInClient();
+        if (liff.isLoggedIn()) {
+          const profile = await liff.getProfile();
+          setUser(profile.displayName, profile.userId);
+          loadBookings();
+        } else if (liff.isInClient()) {
+          liff.login();
+          return;
+        } else {
+          setUser("ゲスト", "");
+          loadBookings();
+        }
+      } catch (err) {
+        setUser("ゲスト", "");
+        loadBookings();
+      }
     });
   </script>
 </body>
