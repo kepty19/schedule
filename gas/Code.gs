@@ -45,6 +45,11 @@ var LESSON_TYPES = {
   guided: '専属講師が主導する授業形式のレッスン',
   freetalk: '専属講師と自由に会話するフリートークレッスン'
 };
+var STAFF_LESSON_LABELS = {
+  guided: '[Lecture-style Lesson]',
+  freetalk: '[Free Talk Lesson]'
+};
+var STAFF_MONTHS = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
 var ZOOM_URL = 'https://us05web.zoom.us/j/82772210913?pwd=ZuUZhN09KfLOz2oyZuafZZEH5GdaJI.1';
 var WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'];
 
@@ -388,13 +393,18 @@ function cancelBooking_(userId, eventId) {
     return { success: false, message: '開始済みの予約は取り消せません。' };
   }
 
+  var desc = event.getDescription() || '';
   var start = event.getStartTime();
   var when = formatLessonWhen_(start);
   var date = tokyoDateString_(start);
   var time = Utilities.formatDate(start, TZ, 'HH:mm');
+  var name = calendarStudentName_(valueOf_(desc, 'LINE_DISPLAY_NAME'));
+  var lessonNo = lessonNumber_(event);
+  var lessonType = valueOf_(desc, 'LESSON_TYPE');
   event.deleteEvent();
   removeBookingRaw_(userId, date, time);
   sendLine_(userId, cancelLineMessage_(when));
+  sendLineToStaff_(staffCancelMessage_(name, lessonNo, start, lessonType), userId);
   return { success: true, message: when + ' の予約を取り消しました。' };
 }
 
@@ -622,8 +632,9 @@ function pad2_(n) {
   return (n < 10 ? '0' : '') + n;
 }
 
-function sendLineToStaff_(text) {
+function sendLineToStaff_(text, excludeUserId) {
   STAFF_LINE_USER_IDS.forEach(function (id) {
+    if (excludeUserId && id === excludeUserId) return;
     sendLine_(id, text);
   });
 }
@@ -666,7 +677,18 @@ function setDescFlag_(event, key, value) {
 }
 
 function formatStaffDate_(date) {
-  return Utilities.formatDate(date, TZ, 'dd/MM');
+  var day = Number(Utilities.formatDate(date, TZ, 'd'));
+  var month = Number(Utilities.formatDate(date, TZ, 'M'));
+  return day + ordinalSuffix_(day) + ' ' + STAFF_MONTHS[month - 1];
+}
+
+function ordinalSuffix_(day) {
+  var mod100 = day % 100;
+  if (mod100 >= 11 && mod100 <= 13) return 'th';
+  if (day % 10 === 1) return 'st';
+  if (day % 10 === 2) return 'nd';
+  if (day % 10 === 3) return 'rd';
+  return 'th';
 }
 
 function formatStaffTime_(date) {
@@ -674,7 +696,7 @@ function formatStaffTime_(date) {
 }
 
 function withLessonType_(text, lessonType) {
-  var label = LESSON_TYPES[lessonType] || '';
+  var label = STAFF_LESSON_LABELS[lessonType] || '';
   if (!label) return text;
   return text + '\n' + label;
 }
@@ -682,6 +704,13 @@ function withLessonType_(text, lessonType) {
 function staffBookingMessage_(name, lessonNo, start, lessonType) {
   return withLessonType_(
     'New Booking: ' + name + ' booked lesson #' + lessonNo + ' for ' + formatStaffDate_(start) + ' at ' + formatStaffTime_(start) + '.',
+    lessonType
+  );
+}
+
+function staffCancelMessage_(name, lessonNo, start, lessonType) {
+  return withLessonType_(
+    'Booking Cancelled: ' + name + ' cancelled lesson #' + lessonNo + ' for ' + formatStaffDate_(start) + ' at ' + formatStaffTime_(start) + '.',
     lessonType
   );
 }
