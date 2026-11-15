@@ -8,6 +8,9 @@
  * （A=LINE_UserID, B=date, C=time, D=remind message,
  *  E=lesson type, F=その行までの同一ユーザーのレッスン累計）。
  * 書き込み先は A 列が空の行の上から。
+ * data シートでは、レッスン終了後に I 列へコメントがあり J 列がチェック済みなら、
+ * チェックから5分後にそのコメントを A 列の LINE userID へ送る。
+ * チェック時刻は K 列、送信済みは L 列。チェックを外すと K・L は消える。
  * 既存のカレンダー予約を流し込むときは、エディタで backfillExistingBookingsToRaw を実行する。
  *
  * デプロイ:
@@ -24,6 +27,7 @@
  *      （予約した本人へは前日21時のLINE案内のみ。1時間前は本人へ送らない）
  *      （STAFF_LINE_USER_IDS へは、前日21時と開始およそ1時間前も送る）
  *    - syncAvailabilityToCalendar … 1分おき（チェックの有無を空き枠へ反映。外した日も消す）
+ *      （data シートのフィードバック送信も、この1分おきの実行で確認する）
  */
 
 var TZ = 'Asia/Tokyo';
@@ -54,6 +58,11 @@ var STAFF_LESSON_LABELS = {
 var STAFF_MONTHS = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
 var ZOOM_URL = 'https://us05web.zoom.us/j/82772210913?pwd=ZuUZhN09KfLOz2oyZuafZZEH5GdaJI.1';
 var WEEKDAY_JA = ['日', '月', '火', '水', '木', '金', '土'];
+var FB_COMMENT_COL = 9;
+var FB_CHECK_COL = 10;
+var FB_CHECKED_AT_COL = 11;
+var FB_SENT_COL = 12;
+var FB_DELAY_MS = 5 * 60 * 1000;
 
 function doGet(e) {
   try {
@@ -295,9 +304,18 @@ function slotsFromWindows_(windows, busy) {
 }
 
 function syncAvailabilityToCalendar() {
+  runAvailabilitySync_(true);
+}
+
+function runAvailabilitySync_(sendFb) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) return;
   try {
+    if (sendFb) {
+      try {
+        sendFbMessages_();
+      } catch (err) {}
+    }
     var days = loadAvailabilityDays_();
     var today = tokyoDateString_(new Date());
     var desired = {};
@@ -348,13 +366,107 @@ function syncAvailabilityToCalendar() {
 function onEdit(e) {
   try {
     if (!e || !e.range) {
-      syncAvailabilityToCalendar();
+      runAvailabilitySync_(false);
       return;
     }
+    recordFbCheckTime_(e);
     var sheet = e.range.getSheet();
     if (sheet.getName() !== SHEET_NAME) return;
-    syncAvailabilityToCalendar();
+    runAvailabilitySync_(false);
   } catch (err) {}
+}
+
+function recordFbCheckTime_(e) {
+  if (!e || !e.range) return;
+  var sheet = e.range.getSheet();
+  if (sheet.getName() !== DATA_SHEET_NAME) return;
+  var startCol = e.range.getColumn();
+  var endCol = startCol + e.range.getNumColumns() - 1;
+  if (startCol > FB_CHECK_COL || endCol < FB_CHECK_COL) return;
+
+  var values = e.range.getValues();
+  var offset = FB_CHECK_COL - startCol;
+  var startRow = e.range.getRow();
+  var now = new Date();
+  for (var r = 0; r < values.length; r++) {
+    var row = startRow + r;
+    if (row < 2) continue;
+    if (isChecked_(values[r][offset])) {
+      if (!sheet.getRange(row, FB_CHECKED_AT_COL).getValue()) {
+        sheet.getRange(row, FB_CHECKED_AT_COL).setValue(now);
+      }
+    } else {
+      sheet.getRange(row, FB_CHECKED_AT_COL, 1, 2).clearContent();
+    }
+  }
+}
+
+function sendFbMessages_() {
+  var sheet = getDataSheet_();
+  ensureFbHeaders_(sheet);
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+
+  var values = sheet.getRange(2, 1, last - 1, FB_SENT_COL).getValues();
+  var now = new Date();
+  for (var i = 0; i < values.length; i++) {
+    var row = i + 2;
+    var checked = isChecked_(values[i][FB_CHECK_COL - 1]);
+    var checkedAt = sheetDateTime_(values[i][FB_CHECKED_AT_COL - 1]);
+    var sent = isFbSent_(values[i][FB_SENT_COL - 1]);
+    if (!checked) {
+      if (checkedAt || sent || values[i][FB_SENT_COL - 1] !== '') {
+        sheet.getRange(row, FB_CHECKED_AT_COL, 1, 2).clearContent();
+      }
+      continue;
+    }
+
+    var userId = String(values[i][0] != null ? values[i][0] : '').trim();
+    var comment = String(values[i][FB_COMMENT_COL - 1] != null ? values[i][FB_COMMENT_COL - 1] : '').trim();
+    if (!userId || !comment || sent) continue;
+    if (!checkedAt) {
+      sheet.getRange(row, FB_CHECKED_AT_COL).setValue(now);
+      continue;
+    }
+
+    var date = sheetDateToYmd_(values[i][1]);
+    var time = sheetTimeToHm_(values[i][2]);
+    if (!date || !time) continue;
+    var end = slotStart_(date, time).getTime() + DURATION_MINUTES * 60 * 1000;
+    if (now.getTime() < end) continue;
+    if (now.getTime() < checkedAt.getTime() + FB_DELAY_MS) continue;
+
+    var text = comment.length > 5000 ? comment.substring(0, 5000) : comment;
+    if (!sendLine_(userId, text)) continue;
+    sheet.getRange(row, FB_SENT_COL).setValue(true);
+  }
+}
+
+function ensureFbHeaders_(sheet) {
+  var headers = sheet.getRange(1, FB_CHECKED_AT_COL, 1, 2).getValues()[0];
+  var next = [headers[0], headers[1]];
+  var changed = false;
+  if (!String(next[0] != null ? next[0] : '').trim()) {
+    next[0] = 'FB checked at';
+    changed = true;
+  }
+  if (!String(next[1] != null ? next[1] : '').trim()) {
+    next[1] = 'FB sent';
+    changed = true;
+  }
+  if (changed) sheet.getRange(1, FB_CHECKED_AT_COL, 1, 2).setValues([next]);
+}
+
+function isFbSent_(value) {
+  return isChecked_(value) || String(value != null ? value : '').trim().toLowerCase() === 'sent';
+}
+
+function sheetDateTime_(value) {
+  if (Object.prototype.toString.call(value) === '[object Date]' && !isNaN(value.getTime())) return value;
+  if (value === '' || value === null || value === undefined) return null;
+  var parsed = new Date(value);
+  if (isNaN(parsed.getTime())) return null;
+  return parsed;
 }
 
 function listBookings_(userId) {
@@ -573,6 +685,9 @@ function appendBookingRawRows_(sheet, rows) {
       ]);
     }
     sheet.getRange(targets[runStart], 1, run.length, 6).setValues(run);
+    if (sheet.getName() === DATA_SHEET_NAME) {
+      sheet.getRange(targets[runStart], FB_COMMENT_COL, run.length, 4).clearContent();
+    }
     runStart = j;
   }
   return fresh.length;
@@ -632,6 +747,9 @@ function removeBookingRawFromSheet_(sheet, userId, date, time) {
     var rowTime = sheetTimeToHm_(values[i][2]);
     if (rowUserId === userId && rowDate === date && rowTime === time) {
       sheet.getRange(i + 1, 1, 1, 6).clearContent();
+      if (sheet.getName() === DATA_SHEET_NAME) {
+        sheet.getRange(i + 1, FB_COMMENT_COL, 1, 4).clearContent();
+      }
       return;
     }
   }
@@ -794,8 +912,8 @@ function staffHourMessage_(name, lessonNo, start, lessonType) {
 
 function sendLine_(userId, text) {
   var token = PropertiesService.getScriptProperties().getProperty('LINE_CHANNEL_ACCESS_TOKEN');
-  if (!token || !userId) return;
-  UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
+  if (!token || !userId || !text) return false;
+  var res = UrlFetchApp.fetch('https://api.line.me/v2/bot/message/push', {
     method: 'post',
     contentType: 'application/json',
     headers: { Authorization: 'Bearer ' + token },
@@ -805,6 +923,8 @@ function sendLine_(userId, text) {
     }),
     muteHttpExceptions: true
   });
+  var code = res.getResponseCode();
+  return code >= 200 && code < 300;
 }
 
 function slotStart_(date, time) {
