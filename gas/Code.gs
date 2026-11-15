@@ -4,9 +4,10 @@
  * 上流はスプレッドシート「calendar」。
  * 2行で1日。時刻の下のチェックがONなら、その時刻〜右隣の時刻の1時間が稼働。
  * 予約枠はその1時間を20分×3本に割る（例: 18時チェック → 18:00 / 18:20 / 18:40）。
- * 予約ローデータは同ブックの「data」「raw」シート A〜D 列へ書く
- * （A=LINE_UserID, B=date, C=time, D=remind message）。
- * 書き込み先は A 列が空の行の上から。E 列の関数は上書きしない。
+ * 予約ローデータは同ブックの「data」「raw」シート A〜F 列へ書く
+ * （A=LINE_UserID, B=date, C=time, D=remind message,
+ *  E=lesson type, F=その行までの同一ユーザーのレッスン累計）。
+ * 書き込み先は A 列が空の行の上から。
  * 既存のカレンダー予約を流し込むときは、エディタで backfillExistingBookingsToRaw を実行する。
  *
  * デプロイ:
@@ -33,7 +34,7 @@ var SPREADSHEET_ID = '1OLiHIs7HjtlSxE9j3ETGhlE8efjiayomMpmYb-376U0';
 var SHEET_NAME = 'calendar';
 var DATA_SHEET_NAME = 'data';
 var RAW_SHEET_NAME = 'raw';
-var DATA_HEADERS = ['LINE_UserID', 'date', 'time', 'remind message'];
+var DATA_HEADERS = ['LINE_UserID', 'date', 'time', 'remind message', 'lesson type', 'lesson count'];
 var AVAILABILITY_TITLE = 'Online Lesson Booking Slot';
 var AVAILABILITY_TAG = 'SHEET_AVAILABILITY:true';
 var AVAILABILITY_COLOR = CalendarApp.EventColor.PALE_BLUE;
@@ -112,7 +113,7 @@ function doPost(e) {
 
     var confirmText = bookingLineMessage_(start);
     sendLine_(userId, confirmText);
-    appendBookingRaw_(userId, date, time, eveLineMessage_(start));
+    appendBookingRaw_(userId, date, time, eveLineMessage_(start), lessonType);
     var lessonNo = String(lessonNoFromRaw_(userId, date, time));
     setDescFlag_(event, 'LESSON_NO', lessonNo);
     sendLineToStaff_(staffBookingMessage_(calendarStudentName_(userName), lessonNo, start, lessonType));
@@ -473,15 +474,21 @@ function getRawSheet_() {
   return getOrCreateSheet_(RAW_SHEET_NAME);
 }
 
-function appendBookingRaw_(userId, date, time, remindMessage) {
-  var row = [userId, date, time, remindMessage || ''];
+function appendBookingRaw_(userId, date, time, remindMessage, lessonType) {
+  var row = [userId, date, time, remindMessage || '', lessonTypeSheetLabel_(lessonType)];
   appendBookingRawRows_(getDataSheet_(), [row]);
   appendBookingRawRows_(getRawSheet_(), [row]);
 }
 
+function lessonTypeSheetLabel_(lessonType) {
+  if (lessonType === 'freetalk') return 'Free talk lesson';
+  if (lessonType === 'guided') return 'lecture style lesson';
+  return '';
+}
+
 /**
  * エディタから手動実行する。
- * Googleカレンダーの今後のレッスン予約を raw（なければ作成）と data の A〜D へ流し込む。
+ * Googleカレンダーの今後のレッスン予約を raw（なければ作成）と data の A〜F へ流し込む。
  * 既に同じ LINE_UserID + date + time がある行は重複追加しない。
  */
 function backfillExistingBookingsToRaw() {
@@ -510,14 +517,15 @@ function collectUpcomingBookingRawRows_() {
     if (isSheetAvailability_(event)) return;
     if (event.getEndTime().getTime() <= now.getTime()) return;
     var start = event.getStartTime();
-    var userId = valueOf_(event.getDescription() || '', 'LINE_USER_ID');
+    var desc = event.getDescription() || '';
+    var userId = valueOf_(desc, 'LINE_USER_ID');
     if (!userId) return;
     var date = tokyoDateString_(start);
     var time = Utilities.formatDate(start, TZ, 'HH:mm');
     var key = bookingRawKey_(userId, date, time);
     if (!key || seen[key]) return;
     seen[key] = true;
-    rows.push([userId, date, time, eveLineMessage_(start)]);
+    rows.push([userId, date, time, eveLineMessage_(start), lessonTypeSheetLabel_(valueOf_(desc, 'LESSON_TYPE'))]);
   });
 
   return rows;
@@ -549,14 +557,45 @@ function appendBookingRawRows_(sheet, rows) {
   if (!fresh.length) return 0;
 
   var targets = rowsWithEmptyColumnA_(sheet, fresh.length);
+  var counts = lessonCountsThroughRows_(sheet, fresh, targets);
   var runStart = 0;
   for (var j = 1; j <= targets.length; j++) {
     if (j < targets.length && targets[j] === targets[j - 1] + 1) continue;
-    var run = fresh.slice(runStart, j);
-    sheet.getRange(targets[runStart], 1, run.length, 4).setValues(run);
+    var run = [];
+    for (var k = runStart; k < j; k++) {
+      run.push([
+        fresh[k][0],
+        fresh[k][1],
+        fresh[k][2],
+        fresh[k][3] || '',
+        fresh[k][4] || '',
+        counts[k]
+      ]);
+    }
+    sheet.getRange(targets[runStart], 1, run.length, 6).setValues(run);
     runStart = j;
   }
   return fresh.length;
+}
+
+function lessonCountsThroughRows_(sheet, fresh, targets) {
+  var last = Math.max(sheet.getLastRow(), 1);
+  var colA = last <= 1 ? [] : sheet.getRange(2, 1, last - 1, 1).getValues();
+  var counts = [];
+  for (var i = 0; i < fresh.length; i++) {
+    var userId = String(fresh[i][0] != null ? fresh[i][0] : '').trim();
+    var through = targets[i] - 1;
+    var total = 0;
+    var limit = Math.min(Math.max(through - 1, 0), colA.length);
+    for (var r = 0; r < limit; r++) {
+      if (String(colA[r][0] != null ? colA[r][0] : '').trim() === userId) total++;
+    }
+    for (var p = 0; p < i; p++) {
+      if (targets[p] <= through && String(fresh[p][0] != null ? fresh[p][0] : '').trim() === userId) total++;
+    }
+    counts.push(total + 1);
+  }
+  return counts;
 }
 
 function rowsWithEmptyColumnA_(sheet, count) {
@@ -592,7 +631,7 @@ function removeBookingRawFromSheet_(sheet, userId, date, time) {
     var rowDate = sheetDateToYmd_(values[i][1]);
     var rowTime = sheetTimeToHm_(values[i][2]);
     if (rowUserId === userId && rowDate === date && rowTime === time) {
-      sheet.getRange(i + 1, 1, 1, 4).clearContent();
+      sheet.getRange(i + 1, 1, 1, 6).clearContent();
       return;
     }
   }
