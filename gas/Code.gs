@@ -6,6 +6,7 @@
  * 予約枠はその1時間を20分×3本に割る（例: 18時チェック → 18:00 / 18:20 / 18:40）。
  * 予約ローデータは同ブックの「data」「raw」シート A〜D 列へ書く
  * （A=LINE_UserID, B=date, C=time, D=remind message）。
+ * 書き込み先は A 列が空の行の上から。E 列の関数は上書きしない。
  * 既存のカレンダー予約を流し込むときは、エディタで backfillExistingBookingsToRaw を実行する。
  *
  * デプロイ:
@@ -545,10 +546,33 @@ function appendBookingRawRows_(sheet, rows) {
     existing[key] = true;
     fresh.push(rows[i]);
   }
-  if (fresh.length) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, fresh.length, 4).setValues(fresh);
+  if (!fresh.length) return 0;
+
+  var targets = rowsWithEmptyColumnA_(sheet, fresh.length);
+  var runStart = 0;
+  for (var j = 1; j <= targets.length; j++) {
+    if (j < targets.length && targets[j] === targets[j - 1] + 1) continue;
+    var run = fresh.slice(runStart, j);
+    sheet.getRange(targets[runStart], 1, run.length, 4).setValues(run);
+    runStart = j;
   }
   return fresh.length;
+}
+
+function rowsWithEmptyColumnA_(sheet, count) {
+  var last = Math.max(sheet.getLastRow(), 1);
+  var colA = sheet.getRange(2, 1, Math.max(last - 1, 1), 1).getValues();
+  var rows = [];
+  var limit = last <= 1 ? 0 : colA.length;
+  for (var i = 0; i < limit && rows.length < count; i++) {
+    if (String(colA[i][0] != null ? colA[i][0] : '').trim() === '') rows.push(i + 2);
+  }
+  var next = last + 1;
+  while (rows.length < count) {
+    rows.push(next);
+    next++;
+  }
+  return rows;
 }
 
 function bookingRawKey_(userId, date, time) {
@@ -568,7 +592,7 @@ function removeBookingRawFromSheet_(sheet, userId, date, time) {
     var rowDate = sheetDateToYmd_(values[i][1]);
     var rowTime = sheetTimeToHm_(values[i][2]);
     if (rowUserId === userId && rowDate === date && rowTime === time) {
-      sheet.deleteRow(i + 1);
+      sheet.getRange(i + 1, 1, 1, 4).clearContent();
       return;
     }
   }
