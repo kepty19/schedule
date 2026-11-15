@@ -8,6 +8,8 @@
  * （A=LINE_UserID, B=date, C=time, D=remind message,
  *  E=lesson type, F=その行までの同一ユーザーのレッスン累計）。
  * 書き込み先は A 列が空の行の上から。
+ * 予約を取り消した行の F は消す。同じ LINE userID の残った行は上から 1, 2, 3… と振り直し、
+ * いちばん下の行に、その時点の受講回数を入れる。
  * data シートでは、レッスン終了後に I 列へコメントがあり J 列がチェック済みなら、
  * チェックから5分後にそのコメントを A 列の LINE userID へ送る。
  * チェック時刻は K 列、送信済みは L 列。チェックを外すと K・L は消える。
@@ -690,6 +692,13 @@ function appendBookingRawRows_(sheet, rows) {
     }
     runStart = j;
   }
+  var seenUsers = {};
+  for (var u = 0; u < fresh.length; u++) {
+    var id = String(fresh[u][0] != null ? fresh[u][0] : '').trim();
+    if (!id || seenUsers[id]) continue;
+    seenUsers[id] = true;
+    renumberLessonCounts_(sheet, id);
+  }
   return fresh.length;
 }
 
@@ -729,6 +738,21 @@ function rowsWithEmptyColumnA_(sheet, count) {
   return rows;
 }
 
+function renumberLessonCounts_(sheet, userId) {
+  userId = String(userId || '').trim();
+  if (!userId) return;
+  var last = sheet.getLastRow();
+  if (last < 2) return;
+  var values = sheet.getRange(2, 1, last - 1, 6).getValues();
+  var count = 0;
+  for (var i = 0; i < values.length; i++) {
+    if (String(values[i][0] != null ? values[i][0] : '').trim() !== userId) continue;
+    count++;
+    if (Number(values[i][5]) === count) continue;
+    sheet.getRange(i + 2, 6).setValue(count);
+  }
+}
+
 function bookingRawKey_(userId, date, time) {
   if (!userId || !date || !time) return '';
   return userId + '|' + date + '|' + time;
@@ -750,6 +774,7 @@ function removeBookingRawFromSheet_(sheet, userId, date, time) {
       if (sheet.getName() === DATA_SHEET_NAME) {
         sheet.getRange(i + 1, FB_COMMENT_COL, 1, 4).clearContent();
       }
+      renumberLessonCounts_(sheet, userId);
       return;
     }
   }
